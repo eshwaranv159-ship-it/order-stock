@@ -1,0 +1,2012 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>StoreBill — Stock &amp; Billing</title>
+<style>
+  :root{
+    --paper:#FAF5E9; --paper-raised:#FFFFFF; --ink:#2B241A; --ink-soft:#6B6153;
+    --line:#E1D6BE; --turmeric:#C98A2B; --turmeric-deep:#A8701C;
+    --brick:#A6432A; --brick-deep:#863526; --teal:#2F5D57; --teal-deep:#234641;
+    --radius:10px; --shadow:0 1px 2px rgba(43,36,26,.06), 0 8px 24px rgba(43,36,26,.06);
+  }
+  *{box-sizing:border-box;}
+  html,body{margin:0;padding:0;background:var(--paper);color:var(--ink);
+    font-family:-apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;font-size:15px;line-height:1.5;}
+  h1,h2,h3,.display{font-family:Georgia,"Times New Roman",serif;font-weight:700;color:var(--ink);margin:0;}
+  .mono{font-family:"SFMono-Regular",Consolas,"Liberation Mono",Menlo,monospace;}
+  a{color:inherit;}
+  button{font-family:inherit;}
+
+  .topbar{display:flex;align-items:center;justify-content:space-between;padding:14px 24px;
+    background:var(--paper-raised);border-bottom:2px solid var(--ink);}
+  .brand{display:flex;align-items:center;gap:10px;}
+  .brand .mark{width:34px;height:34px;border-radius:50%;background:var(--turmeric);color:#fff;
+    display:inline-flex;align-items:center;justify-content:center;font-family:Georgia,serif;font-weight:700;font-size:16px;flex-shrink:0;}
+  .brand h1{font-size:19px;}
+  .brand .tag{font-size:11px;color:var(--ink-soft);text-transform:uppercase;letter-spacing:.08em;}
+  .who{display:flex;align-items:center;gap:12px;font-size:13px;color:var(--ink-soft);}
+  .role-chip{font-size:10px;text-transform:uppercase;letter-spacing:.06em;padding:3px 9px;border-radius:999px;font-weight:700;}
+  .role-chip.admin{background:var(--brick);color:#fff;} .role-chip.labor{background:var(--teal);color:#fff;}
+  .sync{font-size:11px;font-weight:700;padding:3px 9px;border-radius:999px;white-space:nowrap;}
+  .sync.ok{background:#E4EFE9;color:var(--teal-deep);}
+  .sync.bad{background:#F5E0DA;color:var(--brick-deep);}
+  .sync.local{background:#FBEBD3;color:var(--turmeric-deep);}
+
+  .shell{display:flex;min-height:calc(100vh - 62px);}
+  .sidebar{width:210px;background:var(--paper-raised);border-right:1px solid var(--line);padding:18px 12px;flex-shrink:0;}
+  .sidebar button.navlink{display:block;width:100%;text-align:left;padding:10px 12px;border-radius:8px;border:none;background:none;
+    color:var(--ink-soft);font-weight:500;font-size:14px;margin-bottom:2px;cursor:pointer;}
+  .sidebar button.navlink.active,.sidebar button.navlink:hover{background:#F1E7D0;color:var(--ink);}
+  .sidebar .navsep{margin-top:10px;border-top:1px solid var(--line);padding-top:12px;}
+  .main{flex:1;padding:26px 30px;max-width:1150px;}
+
+  .card{background:var(--paper-raised);border:1px solid var(--line);border-radius:var(--radius);box-shadow:var(--shadow);padding:18px;}
+  .stat-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-bottom:22px;}
+  .stat-grid .card .label{font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:var(--ink-soft);margin-bottom:6px;}
+  .stat-grid .card .value{font-family:Georgia,serif;font-size:28px;font-weight:700;}
+  .stat-grid .card.warn .value{color:var(--brick);} .stat-grid .card.good .value{color:var(--teal);}
+
+  .btn{display:inline-flex;align-items:center;gap:6px;padding:9px 15px;border-radius:8px;border:1px solid transparent;
+    font-weight:600;font-size:13.5px;cursor:pointer;text-decoration:none;background:none;}
+  .btn:active{transform:translateY(1px);}
+  .btn-primary{background:var(--ink);color:var(--paper);} .btn-primary:hover{background:#3d3325;}
+  .btn-outline{background:transparent;border-color:var(--line);color:var(--ink);} .btn-outline:hover{border-color:var(--ink);}
+  .btn-danger{background:var(--brick);color:#fff;} .btn-danger:hover{background:var(--brick-deep);}
+  .btn-sm{padding:5px 10px;font-size:12px;}
+  .btn[disabled]{opacity:.5;cursor:not-allowed;}
+
+  .field{margin-bottom:14px;}
+  .field label{display:block;font-size:12.5px;font-weight:700;margin-bottom:5px;}
+  .input,input[type=text],input[type=password],input[type=number],select{
+    width:100%;padding:9px 11px;border:1px solid var(--line);border-radius:7px;background:var(--paper-raised);
+    font-size:14px;font-family:inherit;color:var(--ink);}
+  .input:focus,input:focus,select:focus{outline:2px solid var(--turmeric);outline-offset:1px;border-color:var(--turmeric);}
+  .checkbox-row{display:flex;align-items:center;gap:8px;}
+  .checkbox-row input{width:auto;}
+  .helptext{font-size:11.5px;color:var(--ink-soft);margin-top:4px;}
+  .errbox{color:var(--brick);font-size:13px;margin:8px 0;}
+
+  table.list{width:100%;border-collapse:collapse;}
+  table.list th{text-align:left;font-size:11px;text-transform:uppercase;letter-spacing:.05em;color:var(--ink-soft);
+    padding:9px 10px;border-bottom:2px solid var(--ink);}
+  table.list td{padding:11px 10px;border-bottom:1px solid var(--line);font-size:13.5px;vertical-align:middle;}
+  table.list tr:hover td{background:#FBF7EA;}
+  .badge{font-size:10.5px;font-weight:700;padding:3px 9px;border-radius:999px;text-transform:uppercase;letter-spacing:.04em;}
+  .badge.in{background:#E4EFE9;color:var(--teal-deep);} .badge.low{background:#FBEBD3;color:var(--turmeric-deep);}
+  .badge.out{background:#F5E0DA;color:var(--brick-deep);}
+
+  .msg{padding:10px 14px;border-radius:8px;margin-bottom:14px;font-size:13.5px;background:#F1E7D0;border-left:4px solid var(--turmeric);}
+  .msg.err{background:#F5E0DA;border-left-color:var(--brick);font-weight:600;}
+
+  .auth-wrap{min-height:100vh;display:flex;align-items:center;justify-content:center;}
+  .auth-card{width:360px;}
+  .auth-card h1{font-size:22px;margin:12px 0 2px;}
+  .auth-card .sub{color:var(--ink-soft);font-size:13px;margin-bottom:18px;}
+
+  .billing-shell{display:flex;gap:22px;padding:22px 26px;align-items:flex-start;flex-wrap:wrap;}
+  .product-pane{flex:1.7;min-width:300px;}
+  .search-row{margin-bottom:14px;}
+  .search-row input{padding:11px 13px;font-size:14.5px;}
+  .product-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:11px;}
+  .product-tile{background:var(--paper-raised);border:1px solid var(--line);border-radius:var(--radius);padding:13px;
+    cursor:pointer;position:relative;}
+  .product-tile:hover{border-color:var(--turmeric);}
+  .product-tile.disabled{opacity:.45;cursor:not-allowed;}
+  .product-tile .name{font-weight:700;margin-bottom:3px;font-size:14px;}
+  .product-tile .cat{font-size:10.5px;color:var(--ink-soft);text-transform:uppercase;letter-spacing:.04em;margin-bottom:7px;min-height:12px;}
+  .product-tile .price{font-size:14px;color:var(--teal-deep);font-weight:700;}
+  .product-tile .stock{font-size:11.5px;color:var(--ink-soft);margin-top:2px;}
+  .product-tile .badge{position:absolute;top:9px;right:9px;}
+
+  /* category chips + category search (billing counter) */
+  .cat-bar{display:flex;gap:7px;overflow-x:auto;padding-bottom:6px;margin-bottom:10px;}
+  .cat-chip{flex-shrink:0;border:1px solid var(--line);background:var(--paper-raised);color:var(--ink);border-radius:999px;
+    padding:6px 13px;font-size:12.5px;font-weight:600;cursor:pointer;white-space:nowrap;}
+  .cat-chip:hover{border-color:var(--turmeric);}
+  .cat-chip.active{background:var(--ink);color:var(--paper);border-color:var(--ink);}
+  .cat-chip .cnt{opacity:.65;font-weight:500;margin-left:4px;}
+  .cat-search{margin-bottom:12px;padding:10px;border:1px dashed var(--turmeric);border-radius:var(--radius);background:#FFF9EA;}
+  .cat-search label{display:block;font-size:11.5px;font-weight:700;margin-bottom:5px;color:var(--turmeric-deep);}
+  .receipt-pane{flex:1;min-width:280px;position:sticky;top:20px;}
+  .receipt{background:#FFFDF8;border:1px solid var(--line);border-radius:10px 10px 0 0;box-shadow:var(--shadow);padding:18px 18px 8px;}
+  .receipt-tear{height:13px;background:linear-gradient(-45deg,var(--paper) 6px,transparent 0) 0 6px,
+    linear-gradient(45deg,var(--paper) 6px,#FFFDF8 0) 0 6px;background-size:16px 16px;background-repeat:repeat-x;margin-bottom:14px;}
+  .receipt h2{font-size:15px;text-align:center;text-transform:uppercase;letter-spacing:.08em;}
+  .receipt .sub-center{text-align:center;font-size:10.5px;color:var(--ink-soft);margin-bottom:12px;}
+  .receipt .cust-field{margin-bottom:12px;}
+  .receipt-lines{border-top:1px dashed var(--line);border-bottom:1px dashed var(--line);padding:9px 0;margin-bottom:11px;min-height:50px;}
+  .receipt-line{display:flex;justify-content:space-between;align-items:center;font-size:12.5px;padding:6px 0;}
+  .receipt-line .rl-name{font-weight:700;}
+  .receipt-line .rl-meta{color:var(--ink-soft);font-size:11px;}
+  .receipt-line .rl-remove{color:var(--brick);cursor:pointer;font-size:12px;margin-left:8px;}
+  .receipt-empty{color:var(--ink-soft);font-size:12.5px;text-align:center;padding:10px 0;}
+  .receipt-total{display:flex;justify-content:space-between;font-size:17px;font-weight:700;margin-bottom:14px;}
+  .stamp-btn{display:block;width:100%;padding:15px;border-radius:999px;border:3px dashed var(--brick);background:transparent;
+    color:var(--brick);font-family:Georgia,serif;font-weight:700;font-size:15px;letter-spacing:.1em;text-transform:uppercase;
+    cursor:pointer;transform:rotate(-1deg);}
+  .stamp-btn:hover{background:var(--brick);color:#fff;}
+  .stamp-btn:disabled{opacity:.4;cursor:not-allowed;background:transparent;color:var(--brick);}
+
+  .modal-backdrop{position:fixed;inset:0;background:rgba(43,36,26,.45);display:none;align-items:center;justify-content:center;z-index:50;}
+  .modal-backdrop.open{display:flex;}
+  .modal{background:var(--paper-raised);border-radius:12px;padding:20px;width:300px;box-shadow:var(--shadow);max-height:92vh;overflow:auto;}
+  .modal h3{margin-bottom:12px;}
+  .qty-row{display:flex;gap:8px;}
+  .qty-row select,.qty-row input{width:auto;}
+
+  /* ---------- print: max 10 items per page, page length fits content ---------- */
+  .print-only{display:none;}
+  @media print{
+    html,body{background:#fff !important;height:auto !important;min-height:0 !important;}
+    body > *:not(#printArea){display:none !important;}
+    #printArea{display:block !important;position:static;margin:0 auto;}
+  }
+  #printArea{width:72mm;font-family:"SFMono-Regular",Consolas,"Liberation Mono",monospace;font-size:11.5px;line-height:1.35;color:#000;}
+  #printArea .center{text-align:center;}
+  #printArea .shop{text-align:center;font-family:Georgia,serif;font-weight:700;font-size:17px;letter-spacing:.06em;text-transform:uppercase;}
+  #printArea .sub{text-align:center;font-size:10.5px;}
+  #printArea hr{border:none;border-top:1px dashed #555;margin:5px 0;}
+  #printArea table{width:100%;border-collapse:collapse;}
+  #printArea td{padding:1px 0;font-size:11.5px;vertical-align:top;}
+  #printArea td.r{text-align:right;white-space:nowrap;}
+  #printArea .item-name{font-weight:700;}
+  #printArea .count-pill{display:flex;justify-content:space-between;border:1px solid #000;padding:2px 5px;margin:4px 0;font-weight:700;}
+  #printArea .grand{font-size:14px;font-weight:700;}
+  .receipt-page{break-after:page;page-break-after:always;}
+  .receipt-page:last-child{break-after:auto;page-break-after:auto;}
+  .keep-together{break-inside:avoid;page-break-inside:avoid;}
+
+  /* ---------- splash / intro animation (5 seconds) ---------- */
+  #splash{position:fixed;inset:0;z-index:9999;background:#2B241A;display:flex;flex-direction:column;align-items:center;justify-content:center;
+    transition:opacity .6s ease, visibility .6s ease;}
+  #splash.hide{opacity:0;visibility:hidden;}
+  #splash svg{width:132px;height:132px;overflow:visible;}
+  #splash .sp-ring{fill:none;stroke:#C98A2B;stroke-width:3;stroke-dasharray:340;stroke-dashoffset:340;
+    animation:spDraw 1.8s ease-out .2s forwards;}
+  #splash .sp-disc{fill:#C98A2B;opacity:0;transform-origin:60px 60px;transform:scale(.6);
+    animation:spPop .7s cubic-bezier(.2,1.4,.4,1) 1.9s forwards;}
+  #splash .sp-s{fill:none;stroke:#FAF5E9;stroke-width:7;stroke-linecap:round;stroke-linejoin:round;
+    stroke-dasharray:140;stroke-dashoffset:140;animation:spDraw 1.3s ease-in-out 1.3s forwards;}
+  #splash .sp-name{font-family:Georgia,"Times New Roman",serif;font-weight:700;font-size:34px;letter-spacing:.14em;color:#FAF5E9;
+    margin-top:26px;opacity:0;transform:translateY(10px);animation:spUp .8s ease-out 2.6s forwards;}
+  #splash .sp-tag{font-size:12px;letter-spacing:.28em;text-transform:uppercase;color:#C98A2B;margin-top:8px;
+    opacity:0;animation:spUp .8s ease-out 3.1s forwards;}
+  #splash .sp-bar{width:180px;height:3px;border-radius:2px;background:rgba(250,245,233,.15);margin-top:34px;overflow:hidden;}
+  #splash .sp-bar i{display:block;height:100%;width:0;background:#C98A2B;animation:spBar 5s linear forwards;}
+  @keyframes spDraw{to{stroke-dashoffset:0;}}
+  @keyframes spPop{to{opacity:1;transform:scale(1);}}
+  @keyframes spUp{to{opacity:1;transform:translateY(0);}}
+  @keyframes spBar{to{width:100%;}}
+  @media print{#splash{display:none !important;}}
+
+  .loading-screen{min-height:100vh;display:flex;align-items:center;justify-content:center;color:var(--ink-soft);}
+
+  @media (max-width:880px){
+    .shell{flex-direction:column;}
+    .sidebar{width:100%;display:flex;overflow-x:auto;}
+    .sidebar .navsep{margin-top:0;border-top:none;padding-top:0;}
+    .billing-shell{flex-direction:column;}
+    .receipt-pane{position:static;width:100%;}
+    .stat-grid{grid-template-columns:repeat(2,1fr);}
+    .topbar{padding:12px 14px;}
+    .main{padding:18px 14px;}
+  }
+</style>
+</head>
+<body>
+
+<div id="splash" aria-hidden="true">
+  <svg viewBox="0 0 120 120">
+    <circle class="sp-disc" cx="60" cy="60" r="52"/>
+    <circle class="sp-ring" cx="60" cy="60" r="52"/>
+    <path class="sp-s" d="M78 40 C70 30 44 31 44 45 C44 60 77 55 77 72 C77 88 49 89 40 77"/>
+  </svg>
+  <div class="sp-name">STOREBILL</div>
+  <div class="sp-tag">Stock &amp; Billing</div>
+  <div class="sp-bar"><i></i></div>
+</div>
+
+<div id="app"></div>
+
+<div id="printArea" class="print-only"></div>
+
+<!-- =========================================================
+     BLUETOOTH PRINTER ADD-ON (ESC/POS thermal printers, BLE)
+     Works in Chrome / Edge on Android, Windows, Mac, Linux.
+     Does NOT work in iPhone Safari (Apple blocks Web Bluetooth).
+     ========================================================= -->
+<script>
+const BT_SERVICES = [
+  '000018f0-0000-1000-8000-00805f9b34fb',
+  '0000ffe0-0000-1000-8000-00805f9b34fb',
+  '0000ff00-0000-1000-8000-00805f9b34fb',
+  '0000fee7-0000-1000-8000-00805f9b34fb',
+  'e7810a71-73ae-499d-8c15-faa9aef0c3f2',
+  '49535343-fe7d-4ae5-8fa9-9fafd205e455',
+  '38eb4a80-c570-11e3-9507-0002a5d5c51b',
+  '0000fff0-0000-1000-8000-00805f9b34fb'
+];
+const BT = { device:null, char:null, busy:false, note:'' };
+
+function btSaved() { try { return JSON.parse(localStorage.getItem('storebill:btprinter')) || {}; } catch (e) { return {}; } }
+function btSaveSettings(patch) {
+  const s = Object.assign(btSaved(), patch);
+  try { localStorage.setItem('storebill:btprinter', JSON.stringify(s)); } catch (e) {}
+  return s;
+}
+function btSupported() { return !!(navigator.bluetooth && navigator.bluetooth.requestDevice); }
+function btReady() { return !!(BT.device && BT.device.gatt && BT.device.gatt.connected && BT.char); }
+
+async function btFindWritable(server) {
+  const services = await server.getPrimaryServices();
+  for (const svc of services) {
+    let chars = [];
+    try { chars = await svc.getCharacteristics(); } catch (e) { continue; }
+    for (const c of chars) {
+      if (c.properties.write || c.properties.writeWithoutResponse) return c;
+    }
+  }
+  throw new Error('No writable printer channel found on this device. Is it really a printer?');
+}
+
+async function btOpen(device) {
+  device.removeEventListener('gattserverdisconnected', btOnDrop);
+  device.addEventListener('gattserverdisconnected', btOnDrop);
+  const server = await device.gatt.connect();
+  BT.char = await btFindWritable(server);
+  BT.device = device;
+  btSaveSettings({ id: device.id, name: device.name || '' });
+}
+function btOnDrop() { BT.char = null; BT.note = 'Printer disconnected.'; if (typeof render === 'function') render(); }
+
+// Pair / connect (must be called from a button tap)
+async function btConnect() {
+  if (!btSupported()) { BT.note = 'This browser has no Bluetooth support. Use Chrome or Edge (Android / Windows / Mac). iPhone Safari is not supported.'; render(); return; }
+  BT.busy = true; BT.note = 'Choose your printer in the popup…'; render();
+  try {
+    const s = btSaved();
+    const opts = { optionalServices: BT_SERVICES };
+    if (s.filter) opts.filters = [{ namePrefix: s.filter }]; else opts.acceptAllDevices = true;
+    const device = await navigator.bluetooth.requestDevice(opts);
+    BT.note = 'Connecting to ' + (device.name || 'printer') + '…'; render();
+    await btOpen(device);
+    BT.note = 'Connected to ' + (device.name || 'printer') + '.';
+  } catch (e) {
+    BT.note = (e && e.name === 'NotFoundError') ? 'No printer selected.' : 'Bluetooth error: ' + (e.message || e);
+  }
+  BT.busy = false; render();
+}
+
+// Reconnect to the printer paired earlier (no popup, if the browser allows it)
+async function btReconnect() {
+  const s = btSaved();
+  if (!btSupported() || !navigator.bluetooth.getDevices || !s.id) return false;
+  try {
+    const list = await navigator.bluetooth.getDevices();
+    const d = list.find(x => x.id === s.id);
+    if (!d) return false;
+    await btOpen(d);
+    return true;
+  } catch (e) { return false; }
+}
+
+function btDisconnect() {
+  try { if (BT.device && BT.device.gatt.connected) BT.device.gatt.disconnect(); } catch (e) {}
+  BT.char = null; BT.note = 'Printer disconnected.'; render();
+}
+
+async function btSend(bytes) {
+  if (!btReady()) { if (!(await btReconnect())) throw new Error('Bluetooth printer is not connected.'); }
+  const c = BT.char, CH = 20;
+  for (let i = 0; i < bytes.length; i += CH) {
+    const part = bytes.slice(i, i + CH);
+    if (c.properties.writeWithoutResponse && c.writeValueWithoutResponse) await c.writeValueWithoutResponse(part);
+    else await c.writeValue(part);
+    await new Promise(r => setTimeout(r, 18));
+  }
+}
+
+// ---------- build the ESC/POS receipt ----------
+function btMoney(n) { return 'Rs.' + Number(n).toFixed(2); }
+function btClean(s) { return String(s == null ? '' : s).replace(/₹/g, 'Rs.').replace(/[^\x20-\x7E]/g, '?'); }
+function btLR(l, r, cols) {
+  l = btClean(l); r = btClean(r);
+  const gap = cols - l.length - r.length;
+  return gap >= 1 ? l + ' '.repeat(gap) + r : l.slice(0, Math.max(0, cols - r.length - 1)) + ' ' + r;
+}
+function btWrap(s, cols) {
+  s = btClean(s); const out = [];
+  while (s.length > cols) { out.push(s.slice(0, cols)); s = s.slice(cols); }
+  out.push(s); return out;
+}
+function btBuild(bill) {
+  const cols = parseInt(btSaved().cols) || 32;
+  const bytes = [];
+  const cmd = (...b) => bytes.push(...b);
+  const text = t => { for (const ch of btClean(t)) bytes.push(ch.charCodeAt(0)); };
+  const line = (t) => { text(t); cmd(0x0A); };
+  const dash = () => line('-'.repeat(cols));
+
+  cmd(0x1B, 0x40);                       // init
+  cmd(0x1B, 0x61, 1); cmd(0x1B, 0x45, 1); cmd(0x1D, 0x21, 0x11);
+  line('STOREBILL');
+  cmd(0x1D, 0x21, 0x00); cmd(0x1B, 0x45, 0);
+  line('Kirana & General Store'); line('Sales Receipt');
+  cmd(0x1B, 0x61, 0);
+  dash();
+  line(btLR('Bill No.', bill.billNumber, cols));
+  line(btLR('Date', new Date(bill.createdAt).toLocaleString(), cols));
+  line(btLR('Customer', bill.customerName, cols));
+  line(btLR('Billed by', bill.billedBy, cols));
+  dash();
+  for (const i of bill.items) {
+    cmd(0x1B, 0x45, 1); btWrap(i.productName, cols).forEach(line); cmd(0x1B, 0x45, 0);
+    line(btLR('  ' + (i.packLabel ? i.packCount + ' x ' + i.packLabel + ' @ ' + btMoney(i.packPrice) : i.quantity + ' ' + i.unit + ' x ' + btMoney(i.unitPricePerBase)), btMoney(i.lineTotal), cols));
+  }
+  dash();
+  line(btLR('Total items', String(bill.items.length), cols));
+  cmd(0x1B, 0x45, 1);
+  line(btLR('TOTAL', btMoney(bill.totalAmount), cols));
+  cmd(0x1B, 0x45, 0);
+  dash();
+  cmd(0x1B, 0x61, 1); line('Thank you - visit again!'); cmd(0x1B, 0x61, 0);
+  cmd(0x1B, 0x64, 4);                    // feed 4 lines
+  cmd(0x1D, 0x56, 0x42, 0x00);           // cut (ignored by printers without a cutter)
+  return new Uint8Array(bytes);
+}
+async function btPrintBill(bill) { await btSend(btBuild(bill)); }
+
+async function btTestPrint() {
+  BT.note = 'Sending test print…'; render();
+  try {
+    await btPrintBill({ billNumber:'TEST-000001', createdAt:Date.now(), customerName:'Test', billedBy:'Printer test',
+      totalAmount:0, items:[{ productName:'Bluetooth test line', quantity:1, unit:'piece', unitPricePerBase:0, lineTotal:0 }] });
+    BT.note = 'Test sent. If paper came out, the printer is working.';
+  } catch (e) { BT.note = 'Test failed: ' + (e.message || e); }
+  render();
+}
+
+// ---------- small control panel (Billing screen + Account Settings) ----------
+function btPanelHtml() {
+  const s = btSaved();
+  const ok = btReady();
+  const status = !btSupported()
+    ? '<span style="color:var(--brick);font-weight:700;">Not supported in this browser (use Chrome / Edge)</span>'
+    : ok ? '<span style="color:var(--teal-deep);font-weight:700;">● Connected: ' + esc(BT.device.name || 'printer') + '</span>'
+         : '<span style="color:var(--ink-soft);font-weight:700;">● Not connected' + (s.name ? ' (last: ' + esc(s.name) + ')' : '') + '</span>';
+  return `
+  <div class="card" style="margin-top:14px;padding:14px;">
+    <h3 style="font-size:14px;margin-bottom:6px;">Bluetooth printer</h3>
+    <div style="font-size:12.5px;margin-bottom:8px;">${status}</div>
+    ${BT.note ? `<div class="helptext" style="margin:0 0 8px;">${esc(BT.note)}</div>` : ''}
+    <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px;">
+      <button class="btn btn-primary btn-sm" data-bt="connect" ${BT.busy ? 'disabled' : ''}>${ok ? 'Change printer' : 'Connect printer'}</button>
+      ${ok ? `<button class="btn btn-outline btn-sm" data-bt="test">Test print</button>
+              <button class="btn btn-outline btn-sm" data-bt="disconnect">Disconnect</button>` : ''}
+    </div>
+    <div class="field" style="margin-bottom:8px;"><label>Printer name starts with (optional)</label>
+      <input type="text" data-bt-field="filter" placeholder="e.g. MPT, BlueTooth Printer, RPP" value="${esc(s.filter || '')}"></div>
+    <div class="field" style="margin-bottom:8px;"><label>Printer MAC / address (note only)</label>
+      <input type="text" data-bt-field="address" placeholder="e.g. 66:22:AB:12:34:56" value="${esc(s.address || '')}"></div>
+    <div class="field" style="margin-bottom:6px;"><label>Characters per line</label>
+      <select data-bt-field="cols">
+        <option value="32" ${(s.cols || '32') == '32' ? 'selected' : ''}>32 (58mm paper)</option>
+        <option value="42" ${s.cols == '42' ? 'selected' : ''}>42 (80mm paper)</option>
+        <option value="48" ${s.cols == '48' ? 'selected' : ''}>48 (80mm, small font)</option>
+      </select></div>
+    <div class="helptext">Pair the printer once in your phone/PC Bluetooth settings (PIN usually 0000 or 1234), then tap Connect. Browsers cannot connect by typing a MAC address — they only let you pick the device from the browser's popup, so the MAC field is just saved for your reference.</div>
+  </div>`;
+}
+
+document.addEventListener('click', (e) => {
+  const b = e.target.closest && e.target.closest('[data-bt]');
+  if (!b) return;
+  const a = b.dataset.bt;
+  if (a === 'connect') btConnect();
+  else if (a === 'test') btTestPrint();
+  else if (a === 'disconnect') btDisconnect();
+});
+document.addEventListener('change', (e) => {
+  const f = e.target.closest && e.target.closest('[data-bt-field]');
+  if (!f) return;
+  btSaveSettings({ [f.dataset.btField]: f.value.trim() });
+});
+// try to silently reconnect to the last printer when the app opens
+window.addEventListener('load', () => { setTimeout(async () => { if (await btReconnect()) render(); }, 6000); });
+</script>
+
+<script>
+/* =========================================================
+   STOREBILL — stock & billing app with CLOUD SYNC (v2)
+   + Bluetooth printer support (see add-on script above)
+   ========================================================= */
+
+const CLOUD_DB_URL = 'https://store-bill-6edce-default-rtdb.asia-southeast1.firebasedatabase.app';
+const SYNC_INTERVAL_MS = 8000;
+
+const UNIT_TO_BASE = {kg:1, g:0.001, l:1, ml:0.001, piece:1};
+const UNITS_FOR_TYPE = {WEIGHT:['kg','g'], VOLUME:['l','ml'], COUNT:['piece']};
+const BASE_UNIT_LABEL = {WEIGHT:'kg', VOLUME:'l', COUNT:'piece'};
+
+const ITEMS_PER_PAGE = 10;   // maximum products on one printed page
+
+const PAPERS = {
+  '80mm': { label:'Thermal roll 80mm', width:'72mm', pageW:80, margin:3, thermal:true },
+  '58mm': { label:'Thermal roll 58mm', width:'50mm', pageW:58, margin:3, thermal:true },
+  'A4':   { label:'A4 sheet',          width:'95mm', margin:12, thermal:false },
+};
+const MM_PER_PX = 25.4 / 96;
+
+let state = {
+  loaded: false,
+  config: null,
+  products: [],
+  labor: [],
+  bills: [],
+  categories: [],
+  orders: [],
+  session: null,
+  view: 'overview',
+  cart: [],
+  activeProduct: null,
+  message: null,
+  error: null,
+};
+
+let cloudFailed = false;
+let cloudErrorText = '';
+
+// ---------- local backup helpers ----------
+const STORAGE_PREFIX = 'storebill:';
+function localGet(key) {
+  try { const raw = localStorage.getItem(STORAGE_PREFIX + key); return raw ? JSON.parse(raw) : null; }
+  catch (e) { return null; }
+}
+function localSet(key, value) {
+  try { localStorage.setItem(STORAGE_PREFIX + key, JSON.stringify(value)); } catch (e) {}
+}
+
+function uid() { return Date.now().toString(36) + Math.random().toString(36).slice(2,7); }
+
+// ---------- cloud (Firebase REST) ----------
+async function cloudRequest(path, method, body) {
+  const opts = { method: method || 'GET', cache: 'no-store' };
+  if (body !== undefined) { opts.headers = { 'Content-Type': 'application/json' }; opts.body = JSON.stringify(body); }
+  const res = await fetch(`${CLOUD_DB_URL}/storebill/${path}.json`, opts);
+  if (!res.ok) {
+    let hint = '';
+    if (res.status === 401 || res.status === 403) hint = ' — Firebase rules are blocking access (set .read and .write to true in Realtime Database → Rules)';
+    if (res.status === 404) hint = ' — database URL not found, check CLOUD_DB_URL';
+    throw new Error('HTTP ' + res.status + hint);
+  }
+  const text = await res.text();
+  if (!text) return null;
+  try { return JSON.parse(text); }
+  catch (e) { throw new Error('The database replied with something unexpected — check CLOUD_DB_URL and the Firebase rules.'); }
+}
+function noteCloudError(e) {
+  cloudFailed = true;
+  cloudErrorText = String(e && e.message ? e.message : e);
+}
+
+// Turn the stored object {id: record} into a list. Old data (a plain list) is converted once.
+async function loadCollection(name) {
+  if (!CLOUD_DB_URL) return localGet(name) || [];
+  try {
+    let data = await cloudRequest(name, 'GET');
+    if (Array.isArray(data)) {                       // legacy format -> convert to per-record format
+      const map = {};
+      data.forEach(it => { if (it && typeof it === 'object') { if (!it.id) it.id = uid(); map[it.id] = it; } });
+      if (Object.keys(map).length) await cloudRequest(name, 'PUT', map);
+      data = Object.keys(map).length ? map : null;
+    }
+    const list = data ? Object.entries(data)
+      .filter(([k, v]) => v && typeof v === 'object')
+      .map(([k, v]) => Object.assign({}, v, { id: v.id || k })) : [];
+    localSet(name, list);
+    return list;
+  } catch (e) {
+    noteCloudError(e);
+    return localGet(name) || [];
+  }
+}
+async function loadConfig() {
+  if (!CLOUD_DB_URL) return localGet('config');
+  try {
+    const data = await cloudRequest('config', 'GET');
+    if (data) localSet('config', data);
+    return data;
+  } catch (e) {
+    noteCloudError(e);
+    return localGet('config');
+  }
+}
+async function loadAll() {
+  cloudFailed = false;
+  state.config = await loadConfig();
+  state.products = await loadCollection('products');
+  state.labor = await loadCollection('labor');
+  state.bills = await loadCollection('bills');
+  state.categories = await loadCollection('categories');
+  state.orders = await loadCollection('orders');
+  state.loaded = true;
+}
+// Pull newest data. Returns true if anything changed.
+async function refreshFromCloud() {
+  if (!CLOUD_DB_URL) return false;
+  const snap = () => JSON.stringify([state.config, state.products, state.labor, state.bills, state.categories, state.orders]);
+  const before = snap();
+  cloudFailed = false;
+  const cfg = await loadConfig(); if (cfg) state.config = cfg;
+  state.products = await loadCollection('products');
+  state.labor = await loadCollection('labor');
+  state.bills = await loadCollection('bills');
+  state.categories = await loadCollection('categories');
+  state.orders = await loadCollection('orders');
+  return snap() !== before;
+}
+
+// ---------- saving (each returns true only if the cloud accepted it) ----------
+async function saveRecord(name, rec) {
+  localSet(name, state[name]);
+  if (!CLOUD_DB_URL) return true;
+  try { await cloudRequest(`${name}/${rec.id}`, 'PUT', rec); cloudFailed = false; return true; }
+  catch (e) {
+    noteCloudError(e);
+    state.error = 'NOT saved to the cloud (' + cloudErrorText + '). Other devices will not see this change.';
+    return false;
+  }
+}
+async function deleteRecord(name, id) {
+  localSet(name, state[name]);
+  if (!CLOUD_DB_URL) return true;
+  try { await cloudRequest(`${name}/${id}`, 'DELETE'); cloudFailed = false; return true; }
+  catch (e) {
+    noteCloudError(e);
+    state.error = 'NOT deleted from the cloud (' + cloudErrorText + ').';
+    return false;
+  }
+}
+async function clearCollection(name) {
+  localSet(name, []);
+  if (!CLOUD_DB_URL) return true;
+  try { await cloudRequest(name, 'DELETE'); cloudFailed = false; return true; }
+  catch (e) {
+    noteCloudError(e);
+    state.error = 'NOT cleared in the cloud (' + cloudErrorText + ').';
+    return false;
+  }
+}
+async function saveConfig(cfg) {
+  localSet('config', cfg);
+  if (!CLOUD_DB_URL) return true;
+  try { await cloudRequest('config', 'PUT', cfg); cloudFailed = false; return true; }
+  catch (e) {
+    noteCloudError(e);
+    state.error = 'NOT saved to the cloud (' + cloudErrorText + ').';
+    return false;
+  }
+}
+
+function fmtMoney(n) { return '₹' + Number(n).toFixed(2); }
+
+function baseUnitFor(mt) { return BASE_UNIT_LABEL[mt]; }
+function allowedUnitsFor(mt) { return UNITS_FOR_TYPE[mt]; }
+function toBaseQty(product, amount, unit) {
+  const factor = UNIT_TO_BASE[unit] / UNIT_TO_BASE[product.baseUnit];
+  return Math.round(amount * factor * 1000) / 1000;
+}
+function priceFor(product, amount, unit) {
+  return Math.round(toBaseQty(product, amount, unit) * product.pricePerBase * 100) / 100;
+}
+function inStock(p) { return !p.manuallyDisabled && p.quantityInStock > 0; }
+function isLowStock(p) { return inStock(p) && p.lowStockThreshold > 0 && p.quantityInStock <= p.lowStockThreshold; }
+function stockLabel(p) {
+  if (p.manuallyDisabled || p.quantityInStock <= 0) return 'Out of stock';
+  if (isLowStock(p)) return 'Low stock';
+  return 'In stock';
+}
+function displayQty(p) {
+  if (p.measurementType === 'COUNT') return `${Math.trunc(p.quantityInStock)} piece`;
+  return `${p.quantityInStock} ${p.baseUnit}`;
+}
+
+function esc(s) { const d=document.createElement('div'); d.textContent = s==null?'':s; return d.innerHTML; }
+
+// ---------- sync badge ----------
+function syncBadgeInfo() {
+  if (!CLOUD_DB_URL) return { cls:'local', text:'● This device only' };
+  if (cloudFailed) return { cls:'bad', text:'● Offline — not syncing' };
+  return { cls:'ok', text:'● Synced' };
+}
+function updateSyncBadge() {
+  const el = document.getElementById('syncBadge');
+  if (!el) return;
+  const i = syncBadgeInfo();
+  el.className = 'sync ' + i.cls;
+  el.textContent = i.text;
+}
+
+// ---------- render ----------
+function render() {
+  const app = document.getElementById('app');
+  if (!state.loaded) { app.innerHTML = `<div class="loading-screen">Loading StoreBill…</div>`; return; }
+  if (!state.config && CLOUD_DB_URL && cloudFailed) {
+    app.innerHTML = `
+    <div class="auth-wrap"><div class="card auth-card">
+      <h1>Cannot reach the database</h1>
+      <div class="sub">StoreBill could not connect to the cloud database. Check your internet connection and the CLOUD_DB_URL (Firebase link) in the code, then try again.</div>
+      <div class="errbox" style="word-break:break-word;">Details: ${esc(cloudErrorText)}</div>
+      <button class="btn btn-primary" style="width:100%;justify-content:center;" id="retryCloudBtn">Try again</button>
+    </div></div>`;
+    document.getElementById('retryCloudBtn').addEventListener('click', async () => {
+      state.loaded = false; render(); await loadAll(); render();
+    });
+    return;
+  }
+  if (!state.config) { app.innerHTML = renderSetup(); attachSetupHandlers(); return; }
+  if (!state.session && state.customerMode) { app.innerHTML = renderCustomer(); attachCustomerHandlers(); return; }
+  if (!state.session) { app.innerHTML = renderLogin(); attachLoginHandlers(); return; }
+  app.innerHTML = renderApp();
+  attachAppHandlers();
+}
+
+function renderTopbar() {
+  const roleChip = state.session.role === 'ADMIN'
+    ? `<span class="role-chip admin">Admin</span>` : `<span class="role-chip labor">Labor</span>`;
+  const sb = syncBadgeInfo();
+  return `
+  <div class="topbar">
+    <div class="brand">
+      <span class="mark">S</span>
+      <div><h1>StoreBill</h1><div class="tag">Stock &amp; Billing Counter</div></div>
+    </div>
+    <div class="who">
+      <span class="sync ${sb.cls}" id="syncBadge">${sb.text}</span>
+      ${roleChip}
+      <span>${esc(state.session.username)}</span>
+      <button class="btn btn-outline btn-sm" id="logoutBtn">Log out</button>
+    </div>
+  </div>`;
+}
+
+// ----- setup (first run: create the one Admin) -----
+function renderSetup() {
+  return `
+  <div class="auth-wrap"><div class="card auth-card">
+    <span class="mark" style="display:inline-flex;align-items:center;justify-content:center;background:var(--turmeric);
+      color:#fff;border-radius:50%;width:44px;height:44px;font-family:Georgia,serif;font-weight:700;">S</span>
+    <h1>Welcome to StoreBill</h1>
+    <div class="sub">First time here — create your one Admin account. This is the only Admin the app will ever have.</div>
+    ${state.error ? `<div class="errbox">${esc(state.error)}</div>` : ''}
+    <form id="setupForm">
+      <div class="field"><label>Admin username</label><input type="text" id="su-username" required></div>
+      <div class="field"><label>Password</label><input type="password" id="su-password" required minlength="4"></div>
+      <button class="btn btn-primary" style="width:100%;justify-content:center;" type="submit">Create Admin account</button>
+    </form>
+  </div></div>`;
+}
+function attachSetupHandlers() {
+  document.getElementById('setupForm').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const username = document.getElementById('su-username').value.trim();
+    const password = document.getElementById('su-password').value;
+    if (!username || password.length < 4) { state.error = 'Enter a username and a password (4+ characters).'; render(); return; }
+    // Make sure an Admin was not created meanwhile on another device
+    const existing = await loadConfig();
+    if (existing) { state.config = existing; state.error = 'An Admin account already exists — please sign in.'; render(); return; }
+    const cfg = { adminUsername: username, adminPassword: password };
+    state.error = null;
+    const ok = await saveConfig(cfg);
+    if (!ok) { localSet('config', null); render(); return; }   // do not continue unless the cloud has it
+    state.config = cfg;
+    state.session = { username, role: 'ADMIN' };
+    state.error = null;
+    render();
+  });
+}
+
+// ----- login -----
+function renderLogin() {
+  return `
+  <div class="auth-wrap"><div class="card auth-card">
+    <span class="mark" style="display:inline-flex;align-items:center;justify-content:center;background:var(--turmeric);
+      color:#fff;border-radius:50%;width:44px;height:44px;font-family:Georgia,serif;font-weight:700;">S</span>
+    <h1>StoreBill</h1>
+    <div class="sub">Sign in to open the counter</div>
+    ${state.error ? `<div class="errbox">${esc(state.error)}</div>` : ''}
+    <form id="loginForm">
+      <div class="field"><label>Username</label><input type="text" id="li-username" required></div>
+      <div class="field"><label>Password</label><input type="password" id="li-password" required></div>
+      <button class="btn btn-primary" style="width:100%;justify-content:center;" type="submit">Sign in</button>
+    </form>
+    <button class="btn btn-outline" id="customerModeBtn" style="width:100%;justify-content:center;margin-top:10px;">I am a customer — place my order</button>
+  </div></div>`;
+}
+function attachLoginHandlers() {
+  document.getElementById('customerModeBtn')?.addEventListener('click', () => { state.customerMode = true; state._custDone = null; state.error = null; render(); });
+  document.getElementById('loginForm').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const username = document.getElementById('li-username').value.trim();
+    const password = document.getElementById('li-password').value;
+    await refreshFromCloud();
+    if (username === state.config.adminUsername && password === state.config.adminPassword) {
+      state.session = { username, role: 'ADMIN' }; state.error = null; state.view = 'overview'; render(); return;
+    }
+    const labor = state.labor.find(l => l.username === username && l.password === password);
+    if (labor) {
+      if (!labor.active) { state.error = 'This account has been disabled by the Admin.'; render(); return; }
+      state.session = { username, role: 'LABOR' }; state.error = null; state.view = 'billing'; render(); return;
+    }
+    state.error = 'Incorrect username or password.'; render();
+  });
+}
+
+// ----- main app shell -----
+function renderApp() {
+  if (state.session.role === 'LABOR') {
+    state.view = 'billing';
+    return renderTopbar() + renderBillingScreen();
+  }
+  const nav = [
+    ['overview','Overview'], ['products','Products & Stock'], ['categories','Categories'], ['labor','Labor Accounts'],
+    ['bills','Bill History'], ['settings','Account Settings'], ['billing','Billing Counter'],
+  ];
+  const navHtml = nav.map(([key,label]) => `
+    <button class="navlink ${state.view===key?'active':''} ${key==='billing'?'navsep':''}" data-nav="${key}">${label}${key==='billing'?' →':''}</button>
+  `).join('');
+  let content = '';
+  if (state.view === 'overview') content = renderOverview();
+  else if (state.view === 'products') content = renderProducts();
+  else if (state.view === 'categories') content = renderCategories();
+  else if (state.view === 'labor') content = renderLabor();
+  else if (state.view === 'bills') content = renderBills();
+  else if (state.view === 'settings') content = renderSettings();
+  else if (state.view === 'billing') content = renderBillingScreen(true);
+
+  return renderTopbar() + `
+  <div class="shell">
+    <aside class="sidebar">${navHtml}</aside>
+    <main class="main">${content}</main>
+  </div>`;
+}
+
+function msgBanner() {
+  let html = '';
+  if (state.message) html += `<div class="msg">${esc(state.message)}</div>`;
+  if (state.error) html += `<div class="msg err">${esc(state.error)}</div>`;
+  return html;
+}
+
+// ----- overview -----
+function renderOverview() {
+  const total = state.products.length;
+  const outOfStock = state.products.filter(p => !inStock(p)).length;
+  const lowStock = state.products.filter(p => isLowStock(p)).length;
+  const breached = state.products.filter(p => isLowStock(p));
+  const today = new Date().toDateString();
+  const todaysSales = state.bills.filter(b => new Date(b.createdAt).toDateString() === today)
+    .reduce((s,b) => s + b.totalAmount, 0);
+  const recent = [...state.bills].sort((a,b) => b.createdAt - a.createdAt).slice(0,8);
+
+  return `
+  ${msgBanner()}
+  <h2 style="margin-bottom:16px;">Good day, ${esc(state.session.username)}</h2>
+  <div class="stat-grid">
+    <div class="card"><div class="label">Total products</div><div class="value">${total}</div></div>
+    <div class="card warn"><div class="label">Out of stock</div><div class="value">${outOfStock}</div></div>
+    <div class="card warn"><div class="label">Low stock alerts breached</div><div class="value">${lowStock}</div></div>
+    <div class="card good"><div class="label">Today's sales</div><div class="value mono">${fmtMoney(todaysSales)}</div></div>
+  </div>
+  ${breached.length ? `
+  <div class="card" style="border-color:var(--brick);margin-bottom:20px;">
+    <h3 style="margin-bottom:10px;color:var(--brick);">⚠ Stock alert — ${breached.length} product${breached.length>1?'s':''} at or below the alert limit</h3>
+    <table class="list">
+      <thead><tr><th>Product</th><th>Remaining</th><th>Alert limit</th></tr></thead>
+      <tbody>
+        ${breached.map(p => `
+          <tr><td><strong>${esc(p.name)}</strong></td><td class="mono">${displayQty(p)}</td><td class="mono">${p.lowStockThreshold} ${p.baseUnit}</td></tr>
+        `).join('')}
+      </tbody>
+    </table>
+  </div>` : ''}
+  <div style="display:flex;gap:14px;margin-bottom:20px;flex-wrap:wrap;">
+    <button class="btn btn-primary" data-nav="products">+ Add new product</button>
+    <button class="btn btn-outline" data-nav="labor">+ Add labor account</button>
+    <button class="btn btn-outline" data-nav="billing">Open billing counter</button>
+  </div>
+  <div class="card">
+    <h3 style="margin-bottom:12px;">Recent bills</h3>
+    <table class="list"><thead><tr><th>Bill No.</th><th>Customer</th><th>Billed by</th><th>Amount</th><th>Time</th></tr></thead>
+    <tbody>
+      ${recent.length ? recent.map(b => `
+        <tr><td class="mono">${esc(b.billNumber)}</td><td>${esc(b.customerName)}</td><td>${esc(b.billedBy)}</td>
+        <td class="mono">${fmtMoney(b.totalAmount)}</td><td>${new Date(b.createdAt).toLocaleString()}</td></tr>
+      `).join('') : `<tr><td colspan="5" style="text-align:center;color:var(--ink-soft);padding:20px;">No bills printed yet.</td></tr>`}
+    </tbody></table>
+  </div>`;
+}
+
+// ----- products -----
+function renderProducts() {
+  const q = (state._productQuery || '').toLowerCase();
+  const list = state.products.filter(p => !q || p.name.toLowerCase().includes(q) || (p.category||'').toLowerCase().includes(q));
+  return `
+  ${msgBanner()}
+  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;">
+    <h2>Products &amp; stock</h2>
+    <button class="btn btn-primary" id="addProductBtn">+ Add product</button>
+  </div>
+  <div class="field" style="max-width:300px;"><input type="text" id="productSearch" placeholder="Search products..." value="${esc(state._productQuery||'')}"></div>
+  <div class="card" style="overflow-x:auto;">
+    <table class="list">
+      <thead><tr><th>Name</th><th>Category</th><th>Price</th><th>Quantity</th><th>Status</th><th></th></tr></thead>
+      <tbody>
+        ${list.length ? list.map(p => `
+        <tr>
+          <td><strong>${esc(p.name)}</strong></td>
+          <td>${esc(p.category)||'—'}</td>
+          <td class="mono">${fmtMoney(p.pricePerBase)} / ${p.baseUnit}${(p.packs && p.packs.length) ? `<div class="helptext">${p.packs.map(k => esc(k.label) + ' ₹' + k.price).join(' · ')}</div>` : ''}</td>
+          <td class="mono">${displayQty(p)}</td>
+          <td><span class="badge ${!inStock(p)?'out':(isLowStock(p)?'low':'in')}">${stockLabel(p)}</span></td>
+          <td style="text-align:right;white-space:nowrap;">
+            <button class="btn btn-outline btn-sm" data-edit-product="${esc(p.id)}">Edit</button>
+            <button class="btn btn-outline btn-sm" data-toggle-product="${esc(p.id)}">${p.manuallyDisabled?'Mark in stock':'Mark out of stock'}</button>
+            <button class="btn btn-danger btn-sm" data-delete-product="${esc(p.id)}">Delete</button>
+          </td>
+        </tr>`).join('') : `<tr><td colspan="6" style="text-align:center;color:var(--ink-soft);padding:20px;">${q?`No products match "${esc(q)}".`:'No products yet — add your first one.'}</td></tr>`}
+      </tbody>
+    </table>
+  </div>
+  ${renderProductModal()}`;
+}
+
+function packRowHtml(pk, mtype) {
+  const units = allowedUnitsFor(mtype) || [];
+  return `<div class="qty-row pack-row" data-pid="${esc(pk.id || '')}" style="margin-bottom:6px;">
+    <input type="number" class="pk-qty" min="0.001" step="0.001" placeholder="Qty" value="${pk.qty != null ? pk.qty : ''}" style="width:72px;">
+    <select class="pk-unit" style="width:74px;">${units.map(u => `<option value="${u}" ${u === pk.unit ? 'selected' : ''}>${u}</option>`).join('')}</select>
+    <input type="number" class="pk-price" min="0" step="0.01" placeholder="Price ₹" value="${pk.price != null ? pk.price : ''}" style="flex:1;min-width:0;">
+    <button type="button" class="btn btn-outline btn-sm pk-del" title="Remove">✕</button>
+  </div>`;
+}
+function renderProductModal() {
+  const editing = state._editingProduct;
+  if (!state._productModalOpen) return '';
+  const p = editing || {name:'',category:'',measurementType:'WEIGHT',pricePerBase:'',quantityInStock:'',lowStockThreshold:0,manuallyDisabled:false};
+  return `
+  <div class="modal-backdrop open" id="productModalBackdrop">
+    <div class="modal" style="width:380px;">
+      <h3>${editing ? 'Edit product' : 'Add product'}</h3>
+      <form id="productForm">
+        <div class="field"><label>Name</label><input type="text" id="pf-name" value="${esc(p.name)}" required></div>
+        <div class="field"><label>Category (optional)</label><input type="text" id="pf-category" list="catList" placeholder="e.g. Rice, Oil, Dal" value="${esc(p.category)}">
+          <datalist id="catList">${billingCategories().filter(c => c.key !== '__none').map(c => `<option value="${esc(c.label)}">`).join('')}</datalist>
+          <div class="helptext">Pick an existing category or type a new one. Products with the same category are grouped together at the billing counter.</div></div>
+        <div class="field"><label>Measurement type</label>
+          <select id="pf-mtype">
+            <option value="WEIGHT" ${p.measurementType==='WEIGHT'?'selected':''}>Weight (kg / g)</option>
+            <option value="VOLUME" ${p.measurementType==='VOLUME'?'selected':''}>Volume (l / ml)</option>
+            <option value="COUNT" ${p.measurementType==='COUNT'?'selected':''}>Count (piece)</option>
+          </select>
+        </div>
+        <div class="field"><label>Price per base unit (₹)</label><input type="number" step="0.01" min="0" id="pf-price" value="${p.pricePerBase}" required></div>
+        <div class="field"><label>Quantity in stock (base unit)</label><input type="number" step="0.001" min="0" id="pf-qty" value="${p.quantityInStock}" required></div>
+        <div class="field"><label>Low stock alert limit (optional)</label><input type="number" step="0.001" min="0" id="pf-low" value="${p.lowStockThreshold||0}"></div>
+        <div class="helptext" style="margin-top:-10px;margin-bottom:10px;">When quantity drops to this number or below, it shows up as a stock alert on the Overview page.</div>
+        <div class="field"><label>Pack options with fixed prices (optional)</label>
+          <div id="packRows">${(p.packs || []).map(pk => packRowHtml(pk, p.measurementType)).join('')}</div>
+          <button type="button" class="btn btn-outline btn-sm" id="addPackBtn">+ Add pack option</button>
+          <div class="helptext">Example (Sesame oil, Volume): 1 l = ₹340, 500 ml = ₹170, 100 ml = ₹37. At billing these show as quick buttons. Each sale deducts that amount from the total stock above and charges the fixed price you set here. Add as many options as you need.</div>
+        </div>
+        <div class="field checkbox-row"><input type="checkbox" id="pf-disabled" ${p.manuallyDisabled?'checked':''}><label style="margin:0;">Manually mark out of stock</label></div>
+        <div class="helptext" style="margin-bottom:14px;">Base unit: kg for Weight, litre for Volume, piece for Count. Example: Rice (Weight) qty 100 = 100kg. Badam (Weight) qty 1 = 1kg.</div>
+        <div style="display:flex;gap:8px;">
+          <button class="btn btn-primary" type="submit" id="saveProductBtn" style="flex:1;justify-content:center;">Save product</button>
+          <button class="btn btn-outline" type="button" id="cancelProductModal">Cancel</button>
+        </div>
+      </form>
+    </div>
+  </div>`;
+}
+
+// ----- categories (Admin creates categories and puts products in them) -----
+function renderCategories() {
+  const cats = billingCategories().filter(c => c.key !== '__none');
+  const none = state.products.filter(p => catKey(p) === '__none').length;
+  return `
+  ${msgBanner()}
+  <h2 style="margin-bottom:16px;">Categories</h2>
+  <div class="card" style="max-width:520px;margin-bottom:18px;">
+    <h3 style="margin-bottom:8px;">Create a category</h3>
+    <form id="catCreateForm" style="display:flex;gap:8px;">
+      <input type="text" id="cc-name" placeholder="e.g. Rice, Oil, Powder" required>
+      <button class="btn btn-primary" type="submit" style="white-space:nowrap;">+ Create</button>
+    </form>
+    <div class="helptext">After creating it, press "Select products" to choose which products go inside.</div>
+  </div>
+  <div class="card" style="overflow-x:auto;">
+    <table class="list">
+      <thead><tr><th>Category</th><th>Products</th><th></th></tr></thead>
+      <tbody>
+        ${cats.length ? cats.map(c => `
+        <tr>
+          <td><strong>${esc(c.label)}</strong></td>
+          <td class="mono">${c.count}</td>
+          <td style="text-align:right;white-space:nowrap;">
+            <button class="btn btn-outline btn-sm" data-cat-manage="${esc(c.key)}">Select products</button>
+            <button class="btn btn-danger btn-sm" data-cat-delete="${esc(c.key)}">Delete</button>
+          </td>
+        </tr>`).join('') : `<tr><td colspan="3" style="text-align:center;color:var(--ink-soft);padding:20px;">No categories yet — create your first one above.</td></tr>`}
+      </tbody>
+    </table>
+    ${none ? `<div class="helptext" style="margin-top:10px;">${none} product${none>1?'s have':' has'} no category yet.</div>` : ''}
+  </div>
+  ${renderCatModal()}`;
+}
+function renderCatModal() {
+  const key = state._catModalKey;
+  if (!key) return '';
+  const cat = billingCategories().find(c => c.key === key);
+  if (!cat) return '';
+  const q = (state._catPickQuery || '').toLowerCase();
+  const rows = [...state.products].sort((a, b) => a.name.localeCompare(b.name))
+    .filter(p => !q || p.name.toLowerCase().includes(q))
+    .map(p => {
+      const other = catKey(p) !== key && catKey(p) !== '__none' ? ` <span class="helptext">(now in ${esc(catLabel(p))})</span>` : '';
+      return `<label class="checkbox-row" style="padding:7px 0;border-bottom:1px solid var(--line);font-size:13.5px;cursor:pointer;">
+        <input type="checkbox" data-pick="${esc(p.id)}" ${state._catSel.has(p.id) ? 'checked' : ''}>
+        <span>${esc(p.name)}${other}</span></label>`;
+    }).join('');
+  return `
+  <div class="modal-backdrop open">
+    <div class="modal" style="width:400px;">
+      <h3>Products in “${esc(cat.label)}”</h3>
+      <div class="field"><input type="text" id="catPickSearch" placeholder="Search products..." value="${esc(state._catPickQuery || '')}"></div>
+      <div style="max-height:46vh;overflow:auto;margin-bottom:12px;">${rows || '<div class="receipt-empty">No products found.</div>'}</div>
+      <div class="helptext" style="margin-bottom:10px;">Tick the products that belong in this category. Unticked products are removed from it.</div>
+      <div style="display:flex;gap:8px;">
+        <button class="btn btn-primary" id="catPickSave" style="flex:1;justify-content:center;">Save</button>
+        <button class="btn btn-outline" id="catPickCancel">Cancel</button>
+      </div>
+    </div>
+  </div>`;
+}
+// change ONLY the category field of a product (does not touch stock quantity)
+async function setProductCategory(p, value) {
+  p.category = value;
+  if (!CLOUD_DB_URL) return true;
+  try { await cloudRequest(`products/${p.id}/category`, 'PUT', value); return true; }
+  catch (e) { noteCloudError(e); state.error = 'NOT saved to the cloud (' + cloudErrorText + ').'; return false; }
+}
+function attachCategoryHandlers() {
+  document.getElementById('catCreateForm')?.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const name = document.getElementById('cc-name').value.trim();
+    if (!name) return;
+    state.error = null; state.message = null;
+    if (billingCategories().some(c => c.key === name.toLowerCase())) { state.error = `Category "${name}" already exists.`; render(); return; }
+    const rec = { id: uid(), name };
+    state.categories.push(rec);
+    const ok = await saveRecord('categories', rec);
+    if (ok) state.message = `Category "${name}" created. Press "Select products" to add products to it.`;
+    render();
+  });
+  document.querySelectorAll('[data-cat-manage]').forEach(el => el.addEventListener('click', () => {
+    const key = el.dataset.catManage;
+    state._catModalKey = key; state._catPickQuery = '';
+    state._catSel = new Set(state.products.filter(p => catKey(p) === key).map(p => p.id));
+    render();
+  }));
+  document.querySelectorAll('[data-cat-delete]').forEach(el => el.addEventListener('click', async () => {
+    const key = el.dataset.catDelete;
+    const cat = billingCategories().find(c => c.key === key);
+    if (!cat) return;
+    if (!confirm(`Delete category "${cat.label}"? Its ${cat.count} product(s) will stay, but will have no category.`)) return;
+    state.error = null; state.message = null;
+    let ok = true;
+    for (const p of state.products.filter(p => catKey(p) === key)) { if (!(await setProductCategory(p, ''))) { ok = false; break; } }
+    localSet('products', state.products);
+    if (ok) {
+      const recs = state.categories.filter(c => (c.name || '').trim().toLowerCase() === key);
+      for (const r of recs) { ok = (await deleteRecord('categories', r.id)) && ok; }
+      state.categories = state.categories.filter(c => (c.name || '').trim().toLowerCase() !== key);
+      localSet('categories', state.categories);
+    }
+    if (ok) state.message = `Category "${cat.label}" deleted.`;
+    if (state._activeCategory === key) state._activeCategory = 'ALL';
+    render();
+  }));
+  document.querySelectorAll('[data-pick]').forEach(el => el.addEventListener('change', () => {
+    if (el.checked) state._catSel.add(el.dataset.pick); else state._catSel.delete(el.dataset.pick);
+  }));
+  document.getElementById('catPickSearch')?.addEventListener('input', (e) => {
+    state._catPickQuery = e.target.value; render();
+    const el = document.getElementById('catPickSearch'); el.focus(); el.selectionStart = el.selectionEnd = el.value.length;
+  });
+  document.getElementById('catPickCancel')?.addEventListener('click', () => { state._catModalKey = null; render(); });
+  document.getElementById('catPickSave')?.addEventListener('click', async () => {
+    const key = state._catModalKey;
+    const cat = billingCategories().find(c => c.key === key);
+    if (!cat) { state._catModalKey = null; render(); return; }
+    const btn = document.getElementById('catPickSave');
+    if (btn) { btn.disabled = true; btn.textContent = 'Saving…'; }
+    state.error = null; state.message = null;
+    let ok = true, moved = 0;
+    for (const p of state.products) {
+      const inCat = catKey(p) === key, want = state._catSel.has(p.id);
+      if (want && !inCat) { ok = await setProductCategory(p, cat.label); moved++; }
+      else if (!want && inCat) { ok = await setProductCategory(p, ''); moved++; }
+      if (!ok) break;
+    }
+    localSet('products', state.products);
+    if (ok) state.message = `"${cat.label}" updated (${moved} product${moved === 1 ? '' : 's'} changed).`;
+    state._catModalKey = null;
+    render();
+  });
+}
+
+// ----- customer orders (customer adds products first, staff edits and bills) -----
+function renderOrdersPanel() {
+  const list = [...state.orders].filter(o => o.status !== 'billed').sort((a, b) => a.createdAt - b.createdAt);
+  if (!list.length) return '';
+  return `
+  <div class="card" style="margin-bottom:14px;border-color:var(--turmeric);padding:14px;">
+    <h3 style="font-size:14px;margin-bottom:6px;">Customer orders waiting (${list.length})</h3>
+    ${list.map(o => `
+    <div class="receipt-line" style="border-bottom:1px solid var(--line);">
+      <div><div class="rl-name">${esc(o.orderNo)} — ${esc(o.customerName)}</div>
+        <div class="rl-meta">${(o.items || []).length} item(s) · ${new Date(o.createdAt).toLocaleTimeString()}</div></div>
+      <div style="white-space:nowrap;">
+        <button class="btn btn-primary btn-sm" data-load-order="${esc(o.id)}">Load into bill</button>
+        <button class="btn btn-outline btn-sm" data-del-order="${esc(o.id)}" title="Delete order">✕</button>
+      </div>
+    </div>`).join('')}
+  </div>`;
+}
+function renderEditLineModal() {
+  const i = state._editLineIdx;
+  const item = i != null ? state.cart[i] : null;
+  if (!item) return '';
+  const p = state.products.find(x => x.id === item.productId);
+  const packs = (p && p.packs) || [];
+  const units = allowedUnitsFor(item.measurementType);
+  const isPack = item.packPrice != null;
+  const packSection = packs.length ? `
+    <div class="field"><label>Saved pack options</label>
+      <div class="qty-row" style="margin-bottom:8px;align-items:center;"><span style="font-size:12.5px;">Number of packs</span>
+        <input type="number" id="el-packcount" min="1" step="1" value="${isPack ? item.packCount : 1}" style="width:80px;"></div>
+      <div style="display:flex;flex-direction:column;gap:6px;">
+        ${packs.map(pk => `<button class="btn ${isPack && item.packId === pk.id ? 'btn-primary' : 'btn-outline'}" data-editpack="${esc(pk.id)}" style="justify-content:space-between;"><span>${esc(pk.label)}</span><strong>${fmtMoney(pk.price)}</strong></button>`).join('')}
+      </div>
+      <div id="el-err" class="errbox"></div>
+      <div class="helptext">Tap a pack to switch this line to it (or to change the number of packs).</div>
+    </div>` : '';
+  const countOnly = isPack && !packs.length;       // pack was removed by Admin: just allow changing the count
+  const qtyField = countOnly ? `
+      <div class="field"><label>Number of packs (${esc(item.packLabel)} @ ${fmtMoney(item.packPrice)})</label>
+        <input type="number" id="el-qty" min="1" step="1" value="${item.packCount}">
+      </div>` : (!isPack ? `
+      <div class="field"><label>${packs.length ? 'Or change the custom quantity' : 'Change quantity'}</label>
+        <div class="qty-row">
+          <input type="number" id="el-qty" min="0.001" step="0.001" value="${item.quantity}" style="flex:1;">
+          <select id="el-unit">${units.map(u => `<option value="${u}" ${u === item.unit ? 'selected' : ''}>${u}</option>`).join('')}</select>
+        </div>
+      </div>` : '');
+  const footer = (!isPack || countOnly)
+    ? `<button class="btn btn-primary" id="confirmEditLine" style="flex:1;justify-content:center;">Update</button>
+       <button class="btn btn-outline" id="cancelEditLine">Cancel</button>`
+    : `<button class="btn btn-outline" id="editToCustom" style="flex:1;justify-content:center;">Use custom quantity</button>
+       <button class="btn btn-primary" id="cancelEditLine">Done</button>`;
+  return `
+  <div class="modal-backdrop open">
+    <div class="modal">
+      <h3>${esc(item.name)}</h3>
+      ${packSection}
+      ${qtyField}
+      <div style="margin-top:14px;display:flex;gap:8px;">${footer}</div>
+    </div>
+  </div>`;
+}
+function custCartTotal() { return (state._custCart || []).reduce((s, i) => s + priceForCartLine(i), 0); }
+function renderCustomer() {
+  state._custCart = state._custCart || [];
+  if (state._custDone) {
+    return `
+    <div class="auth-wrap"><div class="card auth-card" style="text-align:center;">
+      <h1>Order sent ✓</h1>
+      <div class="sub">Please go to the counter and tell them your order number.</div>
+      <div class="display" style="font-size:30px;margin:10px 0 20px;">${esc(state._custDone)}</div>
+      <button class="btn btn-primary" id="custNewOrder" style="width:100%;justify-content:center;">Place another order</button>
+      <button class="btn btn-outline" id="custBack" style="width:100%;justify-content:center;margin-top:8px;">← Staff login</button>
+    </div></div>`;
+  }
+  const q = (state._custQuery || '').trim().toLowerCase();
+  const list = state.products.map(p => ({ p, s: q ? matchScore(p, q) : 0 })).filter(x => x.s >= 0)
+    .sort((a, b) => a.s - b.s || a.p.name.localeCompare(b.p.name)).map(x => x.p);
+  const tiles = list.length ? list.map(p => `
+    <div class="product-tile ${!inStock(p) ? 'disabled' : ''}" style="cursor:default;">
+      <span class="badge ${inStock(p) ? 'in' : 'out'}">${inStock(p) ? 'Available' : 'Out of stock'}</span>
+      <div class="name">${esc(p.name)}</div>
+      <div class="cat">${esc(p.category) || '&nbsp;'}</div>
+      <div class="price">${fmtMoney(p.pricePerBase)} / ${p.baseUnit}</div>
+      ${inStock(p) ? `
+      ${(p.packs && p.packs.length) ? `<select data-cpk="${esc(p.id)}" style="margin-top:8px;">${p.packs.map(k => `<option value="${esc(k.id)}">${esc(k.label)} — ${fmtMoney(k.price)}</option>`).join('')}<option value="">Other quantity</option></select>
+      <div class="helptext" data-chint="${esc(p.id)}">Number of packs</div>` : ''}
+      <div class="qty-row" style="margin-top:8px;">
+        <input type="number" min="0.001" step="0.001" value="1" data-cq="${esc(p.id)}" style="flex:1;min-width:0;">
+        <select data-cu="${esc(p.id)}" style="${(p.packs && p.packs.length) ? 'display:none;' : ''}">${allowedUnitsFor(p.measurementType).map(u => `<option value="${u}">${u}</option>`).join('')}</select>
+      </div>
+      <button class="btn btn-outline btn-sm" data-cadd="${esc(p.id)}" style="margin-top:6px;width:100%;justify-content:center;">+ Add</button>` : ''}
+    </div>`).join('') : `<div class="receipt-empty">No products found.</div>`;
+  const lines = state._custCart.length ? state._custCart.map((item, idx) => `
+    <div class="receipt-line">
+      <div><div class="rl-name">${esc(item.name)}</div><div class="rl-meta">${item.packPrice != null ? item.packCount + ' × ' + esc(item.packLabel) + ' @ ' + fmtMoney(item.packPrice) : item.quantity + ' ' + item.unit + ' × ' + fmtMoney(item.pricePerBase) + '/' + item.baseUnit}</div></div>
+      <div>${fmtMoney(priceForCartLine(item))} <span class="rl-remove" data-cremove="${idx}">✕</span></div>
+    </div>`).join('') : `<div class="receipt-empty">Your order is empty. Add products from the list.</div>`;
+  return `
+  <div class="topbar">
+    <div class="brand"><span class="mark">S</span><div><h1>StoreBill</h1><div class="tag">Customer order</div></div></div>
+    <div class="who"><button class="btn btn-outline btn-sm" id="custBack">← Staff login</button></div>
+  </div>
+  <div class="billing-shell">
+    <div class="product-pane">
+      <div class="search-row" style="display:flex;gap:8px;">
+        <input type="text" id="custSearch" placeholder="Search products (e.g. ponni rice)..." value="${esc(state._custQuery || '')}">
+        <button class="btn btn-outline" id="custRefresh" title="Load the latest products">⟳ Refresh</button>
+      </div>
+      <div class="product-grid">${tiles}</div>
+    </div>
+    <div class="receipt-pane">
+      <div class="receipt">
+        <h2>Your order</h2>
+        <div class="sub-center">The counter will check it before billing</div>
+        <div class="cust-field"><label style="font-size:11.5px;font-weight:700;">Your name</label>
+          <input type="text" id="custName" placeholder="Enter your name" value="${esc(state._custName || '')}"></div>
+        <div class="receipt-lines">${lines}</div>
+        <div class="receipt-total"><span>Estimated total</span><span class="mono">${fmtMoney(custCartTotal())}</span></div>
+        ${state.error ? `<div class="errbox" style="text-align:center;font-weight:700;">${esc(state.error)}</div>` : ''}
+      </div>
+      <div class="receipt-tear"></div>
+      <button class="stamp-btn" id="custSend" style="margin-top:6px;">Send order</button>
+      <div class="helptext" style="text-align:center;margin-top:8px;">Final prices and stock are confirmed by the counter staff.</div>
+    </div>
+  </div>`;
+}
+function attachCustomerHandlers() {
+  document.getElementById('custBack')?.addEventListener('click', () => { state.customerMode = false; state.error = null; render(); });
+  document.getElementById('custNewOrder')?.addEventListener('click', () => { state._custDone = null; render(); });
+  document.getElementById('custRefresh')?.addEventListener('click', async () => { await refreshFromCloud(); render(); });
+  document.getElementById('custName')?.addEventListener('input', (e) => { state._custName = e.target.value; });
+  document.getElementById('custSearch')?.addEventListener('input', (e) => {
+    state._custQuery = e.target.value; render();
+    const el = document.getElementById('custSearch'); el.focus(); el.selectionStart = el.selectionEnd = el.value.length;
+  });
+  document.querySelectorAll('[data-cpk]').forEach(el => el.addEventListener('change', () => {
+    const id = el.dataset.cpk, isPack = !!el.value;
+    const u = document.querySelector(`[data-cu="${id}"]`); if (u) u.style.display = isPack ? 'none' : '';
+    const h = document.querySelector(`[data-chint="${id}"]`); if (h) h.textContent = isPack ? 'Number of packs' : 'Quantity';
+  }));
+  document.querySelectorAll('[data-cadd]').forEach(el => el.addEventListener('click', () => {
+    const id = el.dataset.cadd;
+    const p = state.products.find(p => p.id === id);
+    const num = parseFloat(document.querySelector(`[data-cq="${id}"]`).value);
+    if (!p || !num || num <= 0) return;
+    const sel = document.querySelector(`[data-cpk="${id}"]`);
+    const pk = sel && sel.value ? (p.packs || []).find(k => k.id === sel.value) : null;
+    const base = { productId: p.id, name: p.name, pricePerBase: p.pricePerBase, baseUnit: p.baseUnit, measurementType: p.measurementType };
+    let item;
+    if (pk) { const count = Math.max(1, Math.round(num));
+      item = Object.assign(base, { quantity: Math.round(pk.qty * count * 1000) / 1000, unit: pk.unit, packId: pk.id, packLabel: pk.label, packQty: pk.qty, packCount: count, packPrice: pk.price }); }
+    else item = Object.assign(base, { quantity: num, unit: document.querySelector(`[data-cu="${id}"]`).value });
+    const already = state._custCart.filter(i => i.productId === id).reduce((s, i) => s + toBaseQty({ baseUnit: p.baseUnit }, i.quantity, i.unit), 0);
+    if (already + toBaseQty({ baseUnit: p.baseUnit }, item.quantity, item.unit) > p.quantityInStock) { state.error = `Sorry, not enough ${p.name} available.`; render(); return; }
+    state.error = null;
+    state._custCart.push(item);
+    render();
+  }));
+  document.querySelectorAll('[data-cremove]').forEach(el => el.addEventListener('click', () => { state._custCart.splice(parseInt(el.dataset.cremove), 1); render(); }));
+  document.getElementById('custSend')?.addEventListener('click', async () => {
+    const name = (state._custName || '').trim();
+    if (!state._custCart.length) { state.error = 'Add at least one product first.'; render(); return; }
+    if (!name) { state.error = 'Please enter your name.'; render(); return; }
+    const btn = document.getElementById('custSend');
+    if (btn) { btn.disabled = true; btn.textContent = 'Sending…'; }
+    const rec = { id: uid(), orderNo: 'ORD-' + Math.floor(1000 + Math.random() * 9000), customerName: name,
+      items: state._custCart, status: 'pending', createdAt: Date.now() };
+    state.orders.push(rec);
+    const ok = await saveRecord('orders', rec);
+    if (ok) { state._custDone = rec.orderNo; state._custCart = []; state._custName = ''; state.error = null; }
+    else { state.orders = state.orders.filter(o => o.id !== rec.id); }
+    render();
+  });
+}
+
+// ----- labor -----
+function renderLabor() {
+  return `
+  ${msgBanner()}
+  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;">
+    <h2>Labor accounts</h2>
+    <button class="btn btn-primary" id="addLaborBtn">+ New labor account</button>
+  </div>
+  <div class="card">
+    <table class="list">
+      <thead><tr><th>Username</th><th>Phone</th><th>Status</th><th></th></tr></thead>
+      <tbody>
+        ${state.labor.length ? state.labor.map(l => `
+        <tr>
+          <td>${esc(l.username)}</td><td>${esc(l.phone)||'—'}</td>
+          <td><span class="badge ${l.active?'in':'out'}">${l.active?'Active':'Disabled'}</span></td>
+          <td style="text-align:right;white-space:nowrap;">
+            <button class="btn btn-outline btn-sm" data-toggle-labor="${esc(l.id)}">${l.active?'Disable':'Enable'}</button>
+            <button class="btn btn-danger btn-sm" data-delete-labor="${esc(l.id)}">Delete</button>
+          </td>
+        </tr>`).join('') : `<tr><td colspan="4" style="text-align:center;color:var(--ink-soft);padding:20px;">No labor accounts yet.</td></tr>`}
+      </tbody>
+    </table>
+  </div>
+  ${renderLaborModal()}`;
+}
+function renderLaborModal() {
+  if (!state._laborModalOpen) return '';
+  return `
+  <div class="modal-backdrop open" id="laborModalBackdrop">
+    <div class="modal">
+      <h3>New labor account</h3>
+      <form id="laborForm">
+        <div class="field"><label>Username</label><input type="text" id="lf-username" required></div>
+        <div class="field"><label>Password</label><input type="password" id="lf-password" required minlength="4"></div>
+        <div class="field"><label>Phone (optional)</label><input type="text" id="lf-phone"></div>
+        <div style="display:flex;gap:8px;">
+          <button class="btn btn-primary" type="submit" style="flex:1;justify-content:center;">Create account</button>
+          <button class="btn btn-outline" type="button" id="cancelLaborModal">Cancel</button>
+        </div>
+      </form>
+    </div>
+  </div>`;
+}
+
+// ----- bills -----
+function renderBills() {
+  const bills = [...state.bills].sort((a,b) => b.createdAt - a.createdAt);
+  return `
+  ${msgBanner()}
+  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;">
+    <h2>Bill history</h2>
+    ${bills.length ? `<button class="btn btn-danger btn-sm" id="clearAllBillsBtn">Clear all history</button>` : ''}
+  </div>
+  <div class="helptext" style="margin-bottom:14px;">Deleting a bill only removes it from this list — it does not restore the stock that was sold.</div>
+  <div class="card" style="overflow-x:auto;">
+    <table class="list">
+      <thead><tr><th>Bill No.</th><th>Customer</th><th>Billed by</th><th>Amount</th><th>Date</th><th></th></tr></thead>
+      <tbody>
+        ${bills.length ? bills.map(b => `
+        <tr>
+          <td class="mono">${esc(b.billNumber)}</td><td>${esc(b.customerName)}</td><td>${esc(b.billedBy)}</td>
+          <td class="mono">${fmtMoney(b.totalAmount)}</td><td>${new Date(b.createdAt).toLocaleString()}</td>
+          <td style="text-align:right;white-space:nowrap;">
+            <button class="btn btn-outline btn-sm" data-reprint="${esc(b.id)}">View / Reprint</button>
+            <button class="btn btn-danger btn-sm" data-delete-bill="${esc(b.id)}">Delete</button>
+          </td>
+        </tr>`).join('') : `<tr><td colspan="6" style="text-align:center;color:var(--ink-soft);padding:20px;">No bills yet.</td></tr>`}
+      </tbody>
+    </table>
+  </div>`;
+}
+
+// ----- categories + search ranking (billing counter) -----
+function catKey(p) { return (p.category || '').trim().toLowerCase() || '__none'; }
+function catLabel(p) { return (p.category || '').trim() || 'Uncategorized'; }
+function billingCategories() {
+  const map = new Map();
+  (state.categories || []).forEach(c => {
+    const name = (c.name || '').trim(); const k = name.toLowerCase();
+    if (k && !map.has(k)) map.set(k, { key: k, label: name, count: 0, id: c.id });
+  });
+  state.products.forEach(p => {
+    const k = catKey(p);
+    if (!map.has(k)) map.set(k, { key: k, label: catLabel(p), count: 0 });
+    map.get(k).count++;
+  });
+  return [...map.values()].sort((a, b) => a.label.localeCompare(b.label));
+}
+// lower score = shown earlier; -1 = not a match
+function matchScore(p, q) {
+  const name = (p.name || '').toLowerCase().trim();
+  const cat = (p.category || '').toLowerCase();
+  if (name === q) return 0;                              // exact name  (ponni rice)
+  if (name.startsWith(q)) return 1;                      // name starts with it (ponni rice premium)
+  if (name.includes(q)) return 2;                        // name contains the whole phrase
+  const tokens = q.split(/\s+/).filter(Boolean);
+  if (tokens.every(t => name.includes(t))) return 3;     // all words are in the name
+  if (tokens.every(t => (name + ' ' + cat).includes(t))) return 4;  // words in name or category
+  if (tokens.some(t => (name + ' ' + cat).includes(t))) return 5;   // some word matches (other rices)
+  return -1;
+}
+function filterBillingProducts() {
+  const gq = (state._billingQuery || '').trim().toLowerCase();
+  const active = state._activeCategory || 'ALL';
+  let list = state.products.map(p => ({ p, s: 0 }));
+  if (gq) {
+    // "search everything" bar: looks in ALL categories, best match first
+    list = list.map(x => ({ p: x.p, s: matchScore(x.p, gq) })).filter(x => x.s >= 0);
+  } else if (active !== 'ALL') {
+    list = list.filter(x => catKey(x.p) === active);
+    const cq = ((state._categoryQueries || {})[active] || '').trim().toLowerCase();
+    if (cq) list = list.map(x => ({ p: x.p, s: matchScore(x.p, cq) })).filter(x => x.s >= 0);
+  }
+  list.sort((a, b) => a.s - b.s || (a.p.name || '').localeCompare(b.p.name || ''));
+  return list.map(x => x.p);
+}
+function renderCategoryBar() {
+  const cats = billingCategories();
+  if (state._activeCategory && state._activeCategory !== 'ALL' && !cats.some(c => c.key === state._activeCategory)) state._activeCategory = 'ALL';
+  const active = state._activeCategory || 'ALL';
+  const gq = (state._billingQuery || '').trim();
+  const chips = [`<button class="cat-chip ${active === 'ALL' ? 'active' : ''}" data-cat="ALL">All<span class="cnt">${state.products.length}</span></button>`]
+    .concat(cats.map(c => `<button class="cat-chip ${active === c.key ? 'active' : ''}" data-cat="${esc(c.key)}">${esc(c.label)}<span class="cnt">${c.count}</span></button>`)).join('');
+  let catSearch = '';
+  if (active !== 'ALL' && !gq) {
+    const c = cats.find(c => c.key === active);
+    catSearch = `
+      <div class="cat-search">
+        <label>Search inside ${esc(c ? c.label : 'category')}</label>
+        <input type="text" id="categorySearch" placeholder="Search ${esc(c ? c.label : '')} products..." value="${esc((state._categoryQueries || {})[active] || '')}">
+      </div>`;
+  } else if (active !== 'ALL' && gq) {
+    catSearch = `<div class="helptext" style="margin-bottom:10px;">Showing results from ALL categories for "${esc(gq)}". Clear the top search to use this category's own search.</div>`;
+  }
+  return `<div class="cat-bar">${chips}</div>${catSearch}`;
+}
+
+// ----- billing counter (used by both Labor and Admin) -----
+function renderBillingScreen(isAdmin) {
+  const q = (state._billingQuery || '').toLowerCase();
+  const list = filterBillingProducts();
+  const cartTotal = state.cart.reduce((s,i) => s + priceForCartLine(i), 0);
+
+  const tiles = list.length ? list.map(p => `
+    <div class="product-tile ${!inStock(p)?'disabled':''}" ${inStock(p)?`data-tile="${esc(p.id)}"`:''}>
+      <span class="badge ${!inStock(p)?'out':(isLowStock(p)?'low':'in')}">${stockLabel(p)}</span>
+      <div class="name">${esc(p.name)}</div>
+      <div class="cat">${esc(p.category)||'&nbsp;'}</div>
+      <div class="price">${fmtMoney(p.pricePerBase)} / ${p.baseUnit}</div>
+      <div class="stock">${displayQty(p)} in stock</div>
+    </div>`).join('') : `<div class="receipt-empty">No products ${q?'match your search':'yet — ask the Admin to add some'}.</div>`;
+
+  const lines = state.cart.length ? state.cart.map((item, idx) => `
+    <div class="receipt-line">
+      <div><div class="rl-name">${esc(item.name)}</div><div class="rl-meta">${item.packPrice != null ? item.packCount + ' × ' + esc(item.packLabel) + ' @ ' + fmtMoney(item.packPrice) : item.quantity + ' ' + item.unit + ' × ' + fmtMoney(item.pricePerBase) + '/' + item.baseUnit}</div></div>
+      <div>${fmtMoney(priceForCartLine(item))} <span class="rl-remove" style="color:var(--teal-deep);" title="Edit quantity" data-edit-line="${idx}">✎</span> <span class="rl-remove" data-remove-line="${idx}">✕</span></div>
+    </div>`).join('') : `<div class="receipt-empty">No items added yet. Tap a product to add it.</div>`;
+
+  return `
+  <div class="billing-shell">
+    <div class="product-pane">
+      <div class="search-row" style="display:flex;gap:8px;">
+        <input type="text" id="billingSearch" placeholder="Search ALL products (e.g. ponni rice)..." value="${esc(state._billingQuery||'')}">
+        ${CLOUD_DB_URL ? `<button class="btn btn-outline" id="refreshBtn" title="Load the latest products from the cloud">⟳ Refresh</button>` : ''}
+      </div>
+      ${renderOrdersPanel()}
+      ${renderCategoryBar()}
+      <div class="product-grid">${tiles}</div>
+    </div>
+    <div class="receipt-pane">
+      <div class="receipt">
+        <h2>StoreBill</h2>
+        <div class="sub-center">Sales Receipt</div>
+        <div class="cust-field"><label style="font-size:11.5px;font-weight:700;">Customer name</label>
+          <input type="text" id="customerName" placeholder="Walk-in customer" value="${esc(state._customerName||'')}"></div>
+        <div class="receipt-lines">${state._loadedOrderId ? `<div class="helptext" style="margin:0 0 6px;color:var(--turmeric-deep);font-weight:700;">Customer order loaded — edit (✎), add or remove items before printing.</div>` : ''}${lines}</div>
+        <div class="receipt-total"><span>Total</span><span class="mono">${fmtMoney(cartTotal)}</span></div>
+        ${state.error ? `<div class="errbox" style="text-align:center;font-weight:700;">${esc(state.error)}</div>` : ''}
+      </div>
+      <div class="receipt-tear"></div>
+      <div style="display:flex;gap:8px;margin-top:12px;">
+        <button class="btn btn-outline" id="newBillBtn" style="flex:1;justify-content:center;">New Bill</button>
+      </div>
+      <button class="stamp-btn" id="printBillBtn" style="margin-top:10px;">Print Bill</button>
+      <div class="helptext" style="text-align:center;margin-top:8px;">Print Bill opens your device's print dialog — pick your connected printer there. If a Bluetooth printer is connected below, bills print straight to it.</div>
+      ${btPanelHtml()}
+    </div>
+  </div>
+  ${renderAddToCartModal()}
+  ${renderEditLineModal()}`;
+}
+function priceForCartLine(item) {
+  if (item.packPrice != null) return item.packPrice * item.packCount;   // fixed pack price set by Admin
+  const baseQty = item.quantity * (UNIT_TO_BASE[item.unit] / UNIT_TO_BASE[item.baseUnit]);
+  return baseQty * item.pricePerBase;
+}
+function renderAddToCartModal() {
+  if (!state._cartModalOpen || !state.activeProduct) return '';
+  const p = state.activeProduct;
+  const units = allowedUnitsFor(p.measurementType);
+  return `
+  <div class="modal-backdrop open" id="cartModalBackdrop">
+    <div class="modal">
+      <h3>${esc(p.name)}</h3>
+      ${(p.packs && p.packs.length) ? `
+      <div class="field"><label>Choose a pack</label>
+        <div class="qty-row" style="margin-bottom:8px;align-items:center;"><span style="font-size:12.5px;">Number of packs</span>
+          <input type="number" id="cm-packcount" min="1" step="1" value="1" style="width:80px;"></div>
+        <div style="display:flex;flex-direction:column;gap:6px;">
+          ${p.packs.map(pk => `<button class="btn btn-outline" data-pack="${esc(pk.id)}" style="justify-content:space-between;"><span>${esc(pk.label)}</span><strong>${fmtMoney(pk.price)}</strong></button>`).join('')}
+        </div>
+        <div id="cm-err" class="errbox"></div>
+        <div class="helptext" style="margin-top:6px;">— or enter any other quantity below (charged at ${fmtMoney(p.pricePerBase)} per ${p.baseUnit}) —</div>
+      </div>` : ''}
+      <div class="field"><label>Quantity</label>
+        <div class="qty-row">
+          <input type="number" id="cm-qty" min="0.001" step="0.001" value="1" style="flex:1;">
+          <select id="cm-unit">${units.map(u => `<option value="${u}">${u}</option>`).join('')}</select>
+        </div>
+      </div>
+      <div class="helptext">In stock: ${displayQty(p)}. Price: ${fmtMoney(p.pricePerBase)} per ${p.baseUnit}.</div>
+      <div style="margin-top:14px;display:flex;gap:8px;">
+        <button class="btn btn-primary" id="confirmAddToCart" style="flex:1;justify-content:center;">Add to bill</button>
+        <button class="btn btn-outline" id="cancelCartModal">Cancel</button>
+      </div>
+    </div>
+  </div>`;
+}
+
+// ----- account settings -----
+function renderSettings() {
+  return `
+  ${msgBanner()}
+  <h2 style="margin-bottom:16px;">Account settings</h2>
+  <div class="card" style="max-width:420px;">
+    <p style="margin-top:0;font-size:13.5px;color:var(--ink-soft);">Update the Admin username and/or password. Enter your current password to confirm the change.</p>
+    <form id="settingsForm">
+      <div class="field"><label>New username</label><input type="text" id="st-username" value="${esc(state.config.adminUsername)}" required></div>
+      <div class="field"><label>New password (leave blank to keep current)</label><input type="password" id="st-newpassword" minlength="4"></div>
+      <div class="field"><label>Current password (required to confirm)</label><input type="password" id="st-currentpassword" required></div>
+      <button class="btn btn-primary" type="submit">Save changes</button>
+    </form>
+  </div>
+  <div class="card" style="max-width:420px;margin-top:18px;">
+    <h3 style="margin-bottom:6px;">Printer paper</h3>
+    <p style="margin-top:0;font-size:13.5px;color:var(--ink-soft);">Choose the paper your bill printer uses. Thermal rolls print each bill only as long as it needs to be.</p>
+    <div class="field" style="margin-bottom:0;">
+      <select id="st-paper">
+        ${Object.entries(PAPERS).map(([k,v]) => `<option value="${k}" ${currentPaper()===k?'selected':''}>${v.label}</option>`).join('')}
+      </select>
+    </div>
+  </div>
+  <div class="card" style="max-width:420px;margin-top:18px;">
+    <h3 style="margin-bottom:6px;">Cloud sync</h3>
+    <p style="margin:0;font-size:13.5px;color:var(--ink-soft);">${CLOUD_DB_URL
+      ? (cloudFailed ? '⚠ Cloud database is not reachable right now: ' + esc(cloudErrorText)
+                     : '✓ Connected — products, labor accounts and bills are saved permanently and refresh automatically on every device every ' + (SYNC_INTERVAL_MS/1000) + ' seconds.')
+      : '⚠ Not connected. Data is saved on this device only. Add your Firebase URL to CLOUD_DB_URL in the code to share data across devices.'}</p>
+  </div>
+  <div style="max-width:420px;">${btPanelHtml()}</div>`;
+}
+function currentPaper() { return (state.config && state.config.paper && PAPERS[state.config.paper]) ? state.config.paper : '80mm'; }
+function attachSettingsHandlers() {
+  document.getElementById('st-paper')?.addEventListener('change', async (e) => {
+    state.error = null; state.message = null;
+    state.config.paper = e.target.value;
+    const ok = await saveConfig(state.config);
+    if (ok) state.message = 'Printer paper set to ' + PAPERS[state.config.paper].label + '.';
+    render();
+  });
+  document.getElementById('settingsForm')?.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    state.error = null; state.message = null;
+    const newUsername = document.getElementById('st-username').value.trim();
+    const newPassword = document.getElementById('st-newpassword').value;
+    const currentPassword = document.getElementById('st-currentpassword').value;
+    if (currentPassword !== state.config.adminPassword) {
+      state.error = 'Current password is incorrect.'; render(); return;
+    }
+    if (!newUsername) { state.error = 'Username cannot be empty.'; render(); return; }
+    if (newPassword && newPassword.length < 4) { state.error = 'New password must be at least 4 characters.'; render(); return; }
+    state.config.adminUsername = newUsername;
+    if (newPassword) state.config.adminPassword = newPassword;
+    const ok = await saveConfig(state.config);
+    if (ok) { state.session.username = newUsername; state.message = 'Account settings updated.'; }
+    render();
+  });
+}
+
+// ---------- event wiring ----------
+function attachAppHandlers() {
+  document.getElementById('logoutBtn')?.addEventListener('click', () => {
+    state.session = null; state.cart = []; state.error = null; state.message = null; render();
+  });
+  document.querySelectorAll('[data-nav]').forEach(el => el.addEventListener('click', async () => {
+    state.view = el.dataset.nav; state.message = null; state.error = null;
+    await refreshFromCloud();
+    render();
+  }));
+  document.getElementById('refreshBtn')?.addEventListener('click', async () => {
+    await refreshFromCloud(); render();
+  });
+
+  if (state.view === 'products' || (state.session.role==='ADMIN' && document.getElementById('addProductBtn'))) attachProductHandlers();
+  if (state.view === 'categories') attachCategoryHandlers();
+  if (state.view === 'labor') attachLaborHandlers();
+  if (state.view === 'bills') attachBillsHandlers();
+  if (state.view === 'settings') attachSettingsHandlers();
+  if (state.view === 'billing') attachBillingHandlers();
+}
+
+function attachProductHandlers() {
+  document.getElementById('productSearch')?.addEventListener('input', (e) => {
+    state._productQuery = e.target.value; render();
+    const el = document.getElementById('productSearch');
+    el.focus(); el.selectionStart = el.selectionEnd = el.value.length;
+  });
+  document.getElementById('addProductBtn')?.addEventListener('click', () => { state._editingProduct = null; state._productModalOpen = true; render(); });
+  document.querySelectorAll('[data-edit-product]').forEach(el => el.addEventListener('click', () => {
+    state._editingProduct = state.products.find(p => p.id === el.dataset.editProduct);
+    state._productModalOpen = true; render();
+  }));
+  document.querySelectorAll('[data-toggle-product]').forEach(el => el.addEventListener('click', async () => {
+    const p = state.products.find(p => p.id === el.dataset.toggleProduct);
+    if (!p) return;
+    state.error = null; state.message = null;
+    p.manuallyDisabled = !p.manuallyDisabled;
+    await saveRecord('products', p);
+    render();
+  }));
+  document.querySelectorAll('[data-delete-product]').forEach(el => el.addEventListener('click', async () => {
+    if (!confirm('Delete this product? This cannot be undone.')) return;
+    const id = el.dataset.deleteProduct;
+    state.error = null; state.message = null;
+    state.products = state.products.filter(p => p.id !== id);
+    const ok = await deleteRecord('products', id);
+    if (ok) state.message = 'Product removed.';
+    render();
+  }));
+  document.getElementById('addPackBtn')?.addEventListener('click', () => {
+    const mt = document.getElementById('pf-mtype').value;
+    document.getElementById('packRows').insertAdjacentHTML('beforeend', packRowHtml({ unit: allowedUnitsFor(mt)[0] }, mt));
+  });
+  document.getElementById('packRows')?.addEventListener('click', (e) => {
+    const b = e.target.closest('.pk-del'); if (b) b.closest('.pack-row').remove();
+  });
+  document.getElementById('pf-mtype')?.addEventListener('change', (e) => {
+    const units = allowedUnitsFor(e.target.value);
+    document.querySelectorAll('#packRows .pk-unit').forEach(sel => { sel.innerHTML = units.map(u => `<option value="${u}">${u}</option>`).join(''); });
+  });
+  document.getElementById('cancelProductModal')?.addEventListener('click', () => { state._productModalOpen = false; render(); });
+  document.getElementById('productForm')?.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const name = document.getElementById('pf-name').value.trim();
+    const measurementType = document.getElementById('pf-mtype').value;
+    const price = parseFloat(document.getElementById('pf-price').value);
+    const qty = parseFloat(document.getElementById('pf-qty').value);
+    if (!name || isNaN(price) || price < 0 || isNaN(qty) || qty < 0) return;
+    const btn = document.getElementById('saveProductBtn');
+    if (btn) { btn.disabled = true; btn.textContent = 'Saving…'; }
+
+    const fields = {
+      name, category: document.getElementById('pf-category').value.trim(), measurementType,
+      baseUnit: baseUnitFor(measurementType), pricePerBase: price, quantityInStock: qty,
+      lowStockThreshold: parseFloat(document.getElementById('pf-low').value) || 0,
+      manuallyDisabled: document.getElementById('pf-disabled').checked,
+      packs: [...document.querySelectorAll('#packRows .pack-row')].map(r => {
+        const q = parseFloat(r.querySelector('.pk-qty').value), pr = parseFloat(r.querySelector('.pk-price').value);
+        const u = r.querySelector('.pk-unit').value;
+        if (!(q > 0) || isNaN(pr) || pr < 0) return null;
+        return { id: r.dataset.pid || uid(), qty: q, unit: u, label: q + ' ' + u, price: pr };
+      }).filter(Boolean),
+    };
+    let rec;
+    if (state._editingProduct) {
+      rec = state.products.find(p => p.id === state._editingProduct.id);
+      if (!rec) { rec = state._editingProduct; state.products.push(rec); }
+      Object.assign(rec, fields);
+    } else {
+      rec = Object.assign({ id: uid() }, fields);
+      state.products.push(rec);
+    }
+    state.error = null; state.message = null;
+    const ok = await saveRecord('products', rec);
+    if (ok) state.message = `'${name}' saved to the cloud.`;
+    state._productModalOpen = false; state._editingProduct = null;
+    render();
+  });
+}
+
+function attachLaborHandlers() {
+  document.getElementById('addLaborBtn')?.addEventListener('click', () => { state._laborModalOpen = true; render(); });
+  document.getElementById('cancelLaborModal')?.addEventListener('click', () => { state._laborModalOpen = false; render(); });
+  document.querySelectorAll('[data-toggle-labor]').forEach(el => el.addEventListener('click', async () => {
+    const l = state.labor.find(l => l.id === el.dataset.toggleLabor);
+    if (!l) return;
+    state.error = null; state.message = null;
+    l.active = !l.active;
+    await saveRecord('labor', l);
+    render();
+  }));
+  document.querySelectorAll('[data-delete-labor]').forEach(el => el.addEventListener('click', async () => {
+    if (!confirm('Delete this labor account? This cannot be undone.')) return;
+    const id = el.dataset.deleteLabor;
+    state.error = null; state.message = null;
+    state.labor = state.labor.filter(l => l.id !== id);
+    const ok = await deleteRecord('labor', id);
+    if (ok) state.message = 'Labor account removed.';
+    render();
+  }));
+  document.getElementById('laborForm')?.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const username = document.getElementById('lf-username').value.trim();
+    const password = document.getElementById('lf-password').value;
+    if (!username || password.length < 4) return;
+    await refreshFromCloud();
+    if (state.labor.some(l => l.username === username) || username === state.config.adminUsername) {
+      state.error = 'That username is already taken.'; render(); return;
+    }
+    const rec = { id: uid(), username, password, phone: document.getElementById('lf-phone').value.trim(), active: true };
+    state.labor.push(rec);
+    state.error = null; state.message = null;
+    const ok = await saveRecord('labor', rec);
+    if (ok) state.message = 'Labor account created.';
+    state._laborModalOpen = false;
+    render();
+  });
+}
+
+function attachBillsHandlers() {
+  document.querySelectorAll('[data-reprint]').forEach(el => el.addEventListener('click', () => {
+    const bill = state.bills.find(b => b.id === el.dataset.reprint);
+    if (bill) printBill(bill);
+  }));
+  document.querySelectorAll('[data-delete-bill]').forEach(el => el.addEventListener('click', async () => {
+    if (!confirm('Delete this bill from history? This cannot be undone (stock already sold is not restored).')) return;
+    const id = el.dataset.deleteBill;
+    state.error = null; state.message = null;
+    state.bills = state.bills.filter(b => b.id !== id);
+    const ok = await deleteRecord('bills', id);
+    if (ok) state.message = 'Bill deleted from history.';
+    render();
+  }));
+  document.getElementById('clearAllBillsBtn')?.addEventListener('click', async () => {
+    if (!confirm('Clear ALL bill history? This cannot be undone.')) return;
+    state.error = null; state.message = null;
+    state.bills = [];
+    const ok = await clearCollection('bills');
+    if (ok) state.message = 'Bill history cleared.';
+    render();
+  });
+}
+
+function attachBillingHandlers() {
+  document.getElementById('billingSearch')?.addEventListener('input', (e) => {
+    state._billingQuery = e.target.value; render();
+    const el = document.getElementById('billingSearch'); el.focus(); el.selectionStart = el.selectionEnd = el.value.length;
+  });
+  document.getElementById('customerName')?.addEventListener('input', (e) => { state._customerName = e.target.value; });
+  document.querySelectorAll('[data-cat]').forEach(el => el.addEventListener('click', () => {
+    state._activeCategory = el.dataset.cat; render();
+  }));
+  document.getElementById('categorySearch')?.addEventListener('input', (e) => {
+    state._categoryQueries = state._categoryQueries || {};
+    state._categoryQueries[state._activeCategory] = e.target.value; render();
+    const el = document.getElementById('categorySearch'); el.focus(); el.selectionStart = el.selectionEnd = el.value.length;
+  });
+  document.querySelectorAll('[data-tile]').forEach(el => el.addEventListener('click', () => {
+    state.activeProduct = state.products.find(p => p.id === el.dataset.tile);
+    state._cartModalOpen = true; render();
+  }));
+  document.getElementById('cancelCartModal')?.addEventListener('click', () => { state._cartModalOpen = false; state.activeProduct = null; render(); });
+  document.getElementById('confirmAddToCart')?.addEventListener('click', () => {
+    const qty = parseFloat(document.getElementById('cm-qty').value);
+    const unit = document.getElementById('cm-unit').value;
+    if (!qty || qty <= 0) return;
+    const p = state.activeProduct;
+    state.cart.push({ productId: p.id, name: p.name, quantity: qty, unit, pricePerBase: p.pricePerBase, baseUnit: p.baseUnit, measurementType: p.measurementType });
+    state._cartModalOpen = false; state.activeProduct = null; render();
+  });
+  document.querySelectorAll('[data-remove-line]').forEach(el => el.addEventListener('click', () => {
+    state.cart.splice(parseInt(el.dataset.removeLine), 1); render();
+  }));
+  document.querySelectorAll('[data-pack]').forEach(el => el.addEventListener('click', () => {
+    const p = state.activeProduct; if (!p) return;
+    const pk = (p.packs || []).find(k => k.id === el.dataset.pack); if (!pk) return;
+    const count = Math.max(1, Math.round(parseFloat(document.getElementById('cm-packcount').value) || 1));
+    const need = toBaseQty(p, pk.qty, pk.unit) * count;
+    const already = state.cart.filter(i => i.productId === p.id).reduce((s, i) => s + toBaseQty(p, i.quantity, i.unit), 0);
+    if (need + already > p.quantityInStock) {
+      document.getElementById('cm-err').textContent = `Not enough stock for ${count} × ${pk.label} (have ${displayQty(p)}).`; return;
+    }
+    state.cart.push({ productId: p.id, name: p.name, quantity: Math.round(pk.qty * count * 1000) / 1000, unit: pk.unit,
+      pricePerBase: p.pricePerBase, baseUnit: p.baseUnit, measurementType: p.measurementType,
+      packId: pk.id, packLabel: pk.label, packQty: pk.qty, packCount: count, packPrice: pk.price });
+    state._cartModalOpen = false; state.activeProduct = null; render();
+  }));
+  document.querySelectorAll('[data-edit-line]').forEach(el => el.addEventListener('click', () => {
+    state._editLineIdx = parseInt(el.dataset.editLine); render();
+  }));
+  document.querySelectorAll('[data-editpack]').forEach(el => el.addEventListener('click', () => {
+    const idx = state._editLineIdx, item = state.cart[idx]; if (!item) return;
+    const p = state.products.find(x => x.id === item.productId);
+    const pk = ((p && p.packs) || []).find(k => k.id === el.dataset.editpack); if (!pk) return;
+    const count = Math.max(1, Math.round(parseFloat(document.getElementById('el-packcount').value) || 1));
+    const need = toBaseQty(p, pk.qty, pk.unit) * count;
+    const others = state.cart.filter((c, j) => j !== idx && c.productId === p.id).reduce((s, c) => s + toBaseQty(p, c.quantity, c.unit), 0);
+    if (need + others > p.quantityInStock) {
+      document.getElementById('el-err').textContent = `Not enough stock for ${count} × ${pk.label} (have ${displayQty(p)}).`; return;
+    }
+    Object.assign(item, { quantity: Math.round(pk.qty * count * 1000) / 1000, unit: pk.unit, pricePerBase: p.pricePerBase, baseUnit: p.baseUnit,
+      packId: pk.id, packLabel: pk.label, packQty: pk.qty, packCount: count, packPrice: pk.price });
+    state._editLineIdx = null; render();
+  }));
+  document.getElementById('editToCustom')?.addEventListener('click', () => {
+    const item = state.cart[state._editLineIdx]; if (!item) return;
+    ['packId', 'packLabel', 'packQty', 'packCount', 'packPrice'].forEach(k => delete item[k]);
+    render();      // popup stays open, now showing the custom quantity box
+  });
+  document.getElementById('cancelEditLine')?.addEventListener('click', () => { state._editLineIdx = null; render(); });
+  document.getElementById('confirmEditLine')?.addEventListener('click', () => {
+    const item = state.cart[state._editLineIdx];
+    const qty = parseFloat(document.getElementById('el-qty').value);
+    if (!item || !qty || qty <= 0) return;
+    if (item.packPrice != null) { item.packCount = Math.max(1, Math.round(qty)); item.quantity = Math.round(item.packQty * item.packCount * 1000) / 1000; }
+    else { item.quantity = qty; item.unit = document.getElementById('el-unit').value; }
+    state._editLineIdx = null; render();
+  });
+  document.querySelectorAll('[data-load-order]').forEach(el => el.addEventListener('click', async () => {
+    const o = state.orders.find(o => o.id === el.dataset.loadOrder);
+    if (!o) return;
+    if (state.cart.length && !confirm('Replace the items on the current bill with this customer order?')) return;
+    await refreshFromCloud();
+    const missing = [];
+    state.cart = (o.items || []).map(it => {
+      const p = state.products.find(p => p.id === it.productId);
+      if (!p) { missing.push(it.name); return null; }
+      const base = { productId: p.id, name: p.name, quantity: it.quantity, unit: it.unit, pricePerBase: p.pricePerBase, baseUnit: p.baseUnit, measurementType: p.measurementType };
+      const pk = it.packId ? (p.packs || []).find(k => k.id === it.packId) : null;
+      if (pk) return Object.assign(base, { packId: pk.id, packLabel: pk.label, packQty: pk.qty, packCount: it.packCount, packPrice: pk.price,
+        quantity: Math.round(pk.qty * it.packCount * 1000) / 1000, unit: pk.unit });
+      return base;
+    }).filter(Boolean);
+    state._customerName = o.customerName || '';
+    state._loadedOrderId = o.id;
+    state.error = missing.length ? 'These items no longer exist and were skipped: ' + missing.join(', ') : null;
+    render();
+  }));
+  document.querySelectorAll('[data-del-order]').forEach(el => el.addEventListener('click', async () => {
+    if (!confirm('Delete this customer order?')) return;
+    const id = el.dataset.delOrder;
+    state.orders = state.orders.filter(o => o.id !== id);
+    if (state._loadedOrderId === id) state._loadedOrderId = null;
+    await deleteRecord('orders', id);
+    render();
+  }));
+  document.getElementById('printBillBtn')?.addEventListener('click', handlePrintBill);
+  document.getElementById('newBillBtn')?.addEventListener('click', () => {
+    state.cart = []; state._customerName = ''; state._loadedOrderId = null; state.error = null; render();
+  });
+}
+
+let printing = false;
+async function handlePrintBill() {
+  if (printing) return;
+  state.error = null;
+  if (!state.cart.length) { state.error = 'Add at least one product first.'; render(); return; }
+  printing = true;
+  const btn = document.getElementById('printBillBtn');
+  if (btn) { btn.disabled = true; btn.textContent = 'Saving…'; }
+
+  try {
+    // 1. Read the latest stock straight from the cloud
+    cloudFailed = false;
+    const fresh = await loadCollection('products');
+    if (CLOUD_DB_URL && cloudFailed) {
+      state.error = 'Cannot reach the cloud database (' + cloudErrorText + '), so the bill was NOT saved and stock was not changed. Check the internet and try again.';
+      render(); return;
+    }
+
+    // 2. Check stock (adds up the same product if it is on several lines)
+    const need = {};
+    for (const item of state.cart) {
+      const p = fresh.find(p => p.id === item.productId);
+      if (!p) { state.error = `${item.name} no longer exists.`; render(); return; }
+      if (p.manuallyDisabled) { state.error = `${p.name} is marked out of stock by Admin.`; render(); return; }
+      need[p.id] = (need[p.id] || 0) + toBaseQty({baseUnit:p.baseUnit}, item.quantity, item.unit);
+      if (need[p.id] > p.quantityInStock) {
+        state.error = `Not enough ${p.name} in stock (have ${displayQty(p)}).`; render(); return;
+      }
+    }
+
+    // 3. Build the bill and reduce stock
+    let total = 0;
+    const billItems = [];
+    for (const item of state.cart) {
+      const p = fresh.find(p => p.id === item.productId);
+      const baseQty = toBaseQty({baseUnit:p.baseUnit}, item.quantity, item.unit);
+      const pk = item.packId ? (p.packs || []).find(k => k.id === item.packId) : null;
+      const packPrice = pk ? pk.price : item.packPrice;     // latest price set by Admin
+      const isPack = !!item.packId && packPrice != null;
+      const lineTotal = isPack ? Math.round(packPrice * item.packCount * 100) / 100 : priceFor(p, item.quantity, item.unit);
+      total += lineTotal;
+      p.quantityInStock = Math.round((p.quantityInStock - baseQty) * 1000) / 1000;
+      billItems.push(Object.assign({ productName: p.name, quantity: item.quantity, unit: item.unit, unitPricePerBase: p.pricePerBase, lineTotal },
+        isPack ? { packLabel: item.packLabel, packCount: item.packCount, packPrice } : {}));
+    }
+
+    // 4. Write ONLY the changed quantities (other fields/devices are untouched)
+    if (CLOUD_DB_URL) {
+      for (const id of Object.keys(need)) {
+        const p = fresh.find(x => x.id === id);
+        await cloudRequest(`products/${id}/quantityInStock`, 'PUT', p.quantityInStock);
+      }
+    }
+    state.products = fresh;
+    localSet('products', state.products);
+
+    // 5. Save the bill as its own record
+    const bills = await loadCollection('bills');
+    const maxNo = bills.reduce((m, b) => Math.max(m, parseInt(String(b.billNumber).replace(/\D/g, '')) || 0), 0);
+    const bill = {
+      id: uid(),
+      billNumber: 'BILL-' + String(maxNo + 1).padStart(6, '0'),
+      customerName: (state._customerName || '').trim() || 'daily customer',
+      billedBy: state.session.username,
+      totalAmount: Math.round(total * 100) / 100,
+      createdAt: Date.now(),
+      items: billItems,
+    };
+    state.bills = bills; state.bills.push(bill);
+    const billSaved = await saveRecord('bills', bill);
+
+    state.cart = []; state._customerName = '';
+    if (billSaved) state.error = null;
+    if (state._loadedOrderId) {            // the customer order has now been billed -> remove it from the waiting list
+      const oid = state._loadedOrderId; state._loadedOrderId = null;
+      state.orders = state.orders.filter(o => o.id !== oid);
+      await deleteRecord('orders', oid);
+    }
+    render();
+    printBill(bill);
+  } catch (e) {
+    noteCloudError(e);
+    state.error = 'Saving the bill failed (' + cloudErrorText + '). Please check the stock and bill history before trying again.';
+    render();
+  } finally {
+    printing = false;
+  }
+}
+
+function itemHtml(i) {
+  return `
+    <tr><td colspan="2" class="item-name">${esc(i.productName)}</td></tr>
+    <tr><td>${i.packLabel ? i.packCount + ' × ' + esc(i.packLabel) + ' @ ' + fmtMoney(i.packPrice) : i.quantity + ' ' + i.unit + ' × ' + fmtMoney(i.unitPricePerBase)}</td><td class="r">${fmtMoney(i.lineTotal)}</td></tr>`;
+}
+
+function printBill(bill) {
+  // ----- Bluetooth printer: if connected, print straight to it -----
+  if (btReady() && !window.btSkip) {
+    btPrintBill(bill).catch(err => {
+      BT.note = 'Bluetooth print failed (' + (err.message || err) + '). Using normal print.';
+      window.btSkip = true; printBill(bill); window.btSkip = false; render();
+    });
+    return;
+  }
+
+  const area = document.getElementById('printArea');
+  const paper = PAPERS[currentPaper()];
+  const totalItems = bill.items.length;
+
+  const pages = [];
+  for (let i = 0; i < totalItems; i += ITEMS_PER_PAGE) pages.push(bill.items.slice(i, i + ITEMS_PER_PAGE));
+  if (!pages.length) pages.push([]);
+  const totalPages = pages.length;
+
+  area.style.width = paper.width;
+  area.innerHTML = pages.map((items, idx) => {
+    const isLast = idx === totalPages - 1;
+    const pageSubtotal = items.reduce((s, i) => s + i.lineTotal, 0);
+    const tailCount = Math.min(2, items.length);
+    const body = items.slice(0, items.length - tailCount);
+    const tail = items.slice(items.length - tailCount);
+
+    const footer = isLast
+      ? `<div class="count-pill"><span>Total items</span><span>${totalItems}</span></div>
+         <table><tr class="grand"><td>TOTAL</td><td class="r">${fmtMoney(bill.totalAmount)}</td></tr></table>
+         <hr>
+         <div class="center">Thank you — visit again!</div>`
+      : `<table><tr><td>Page subtotal</td><td class="r">${fmtMoney(pageSubtotal)}</td></tr></table>
+         <hr>
+         <div class="center">Continued on next page…</div>`;
+
+    return `
+    <div class="receipt-page">
+      <div class="shop">StoreBill</div>
+      <div class="sub">Kirana &amp; General Store</div>
+      <div class="sub">Sales Receipt${totalPages > 1 ? ` — Page ${idx + 1} of ${totalPages}` : ''}</div>
+      <hr>
+      <table>
+        <tr><td>Bill No.</td><td class="r">${esc(bill.billNumber)}</td></tr>
+        <tr><td>Date</td><td class="r">${new Date(bill.createdAt).toLocaleString()}</td></tr>
+        <tr><td>Customer</td><td class="r">${esc(bill.customerName)}</td></tr>
+        <tr><td>Billed by</td><td class="r">${esc(bill.billedBy)}</td></tr>
+      </table>
+      <div class="count-pill"><span>${totalPages > 1 ? 'Items on this page' : 'Total items'}</span><span>${totalPages > 1 ? items.length : totalItems}</span></div>
+      <hr>
+      ${body.length ? `<table>${body.map(itemHtml).join('')}</table>` : ''}
+      <div class="keep-together">
+        <table>${tail.map(itemHtml).join('')}</table>
+        <hr>
+        ${footer}
+      </div>
+    </div>`;
+  }).join('');
+
+  setPrintPageStyle(area, paper);
+  setTimeout(() => window.print(), 150);
+}
+
+function setPrintPageStyle(area, paper) {
+  let css;
+  if (paper.thermal) {
+    const prev = area.style.cssText;
+    area.style.cssText += ';display:block;position:absolute;left:-9999px;top:0;visibility:hidden;';
+    let maxPx = 0;
+    area.querySelectorAll('.receipt-page').forEach(pg => { maxPx = Math.max(maxPx, pg.offsetHeight); });
+    area.style.cssText = prev;
+    const heightMm = Math.ceil(maxPx * MM_PER_PX + paper.margin * 2 + 4);
+    css = `@page{size:${paper.pageW}mm ${heightMm}mm;margin:${paper.margin}mm;}`;
+  } else {
+    css = `@page{size:A4;margin:${paper.margin}mm;}`;
+  }
+  let tag = document.getElementById('pageStyle');
+  if (!tag) { tag = document.createElement('style'); tag.id = 'pageStyle'; document.head.appendChild(tag); }
+  tag.textContent = css;
+}
+
+// ---------- automatic sync between devices ----------
+let syncBusy = false;
+let pendingRender = false;
+function userIsBusy() {
+  const a = document.activeElement;
+  const typing = a && (a.tagName === 'INPUT' || a.tagName === 'SELECT' || a.tagName === 'TEXTAREA');
+  return typing || state._productModalOpen || state._laborModalOpen || state._cartModalOpen || !!state._catModalKey || state._editLineIdx != null || printing;
+}
+setInterval(async () => {
+  if (!CLOUD_DB_URL || !state.loaded || !state.session || syncBusy || document.hidden || printing) return;
+  syncBusy = true;
+  try {
+    if (await refreshFromCloud()) pendingRender = true;
+    updateSyncBadge();
+    if (pendingRender && !userIsBusy()) { pendingRender = false; render(); }
+  } catch (e) {
+    /* ignore, next tick retries */
+  } finally {
+    syncBusy = false;
+  }
+}, SYNC_INTERVAL_MS);
+
+// Refresh immediately when the user comes back to the tab / app
+document.addEventListener('visibilitychange', async () => {
+  if (document.hidden || !CLOUD_DB_URL || !state.session || syncBusy || printing) return;
+  syncBusy = true;
+  try {
+    if (await refreshFromCloud()) { if (!userIsBusy()) render(); else pendingRender = true; }
+    updateSyncBadge();
+  } finally { syncBusy = false; }
+});
+
+// ---------- boot ----------
+(async function boot() {
+  render();
+  await loadAll();
+  render();
+  setTimeout(() => {
+    const sp = document.getElementById('splash');
+    if (!sp) return;
+    sp.classList.add('hide');
+    setTimeout(() => sp.remove(), 700);
+  }, 5000);
+})();
+</script>
+</body>
+</html>
