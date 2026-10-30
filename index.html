@@ -1058,7 +1058,8 @@ function renderOrdersPanel() {
     ${list.map(o => `
     <div class="receipt-line" style="border-bottom:1px solid var(--line);">
       <div><div class="rl-name">${esc(o.orderNo)} — ${esc(o.customerName)}</div>
-        <div class="rl-meta">${(o.items || []).length} item(s) · ${new Date(o.createdAt).toLocaleTimeString()}</div></div>
+        <div class="rl-meta">${(o.items || []).length} item(s) · ${new Date(o.createdAt).toLocaleTimeString()}</div>
+        ${(o.phone || o.address) ? `<div class="rl-meta">${esc(o.phone || '')}${o.phone && o.address ? ' · ' : ''}${esc(o.address || '')}</div>` : ''}</div>
       <div style="white-space:nowrap;">
         <button class="btn btn-primary btn-sm" data-load-order="${esc(o.id)}">Load into bill</button>
         <button class="btn btn-outline btn-sm" data-del-order="${esc(o.id)}" title="Delete order">✕</button>
@@ -1116,11 +1117,11 @@ function renderCustomer() {
   if (state._custDone) {
     return `
     <div class="auth-wrap"><div class="card auth-card" style="text-align:center;">
-      <h1>Order sent ✓</h1>
-      <div class="sub">Please go to the counter and tell them your order number.</div>
-      <div class="display" style="font-size:30px;margin:10px 0 20px;">${esc(state._custDone)}</div>
-      <button class="btn btn-primary" id="custNewOrder" style="width:100%;justify-content:center;">Place another order</button>
-      <button class="btn btn-outline" id="custBack" style="width:100%;justify-content:center;margin-top:8px;">← Staff login</button>
+      <h1>Order confirmed ✓</h1>
+      <div class="sub">Thanks for your purchase! The store has received your order.</div>
+      <div class="helptext">Your order number</div>
+      <div class="display" style="font-size:30px;margin:4px 0 20px;">${esc(state._custDone)}</div>
+      <button class="btn btn-primary" id="custNewOrder" style="width:100%;justify-content:center;">Continue shopping</button>
     </div></div>`;
   }
   const q = (state._custQuery || '').trim().toLowerCase();
@@ -1163,8 +1164,12 @@ function renderCustomer() {
       <div class="receipt">
         <h2>Your order</h2>
         <div class="sub-center">The counter will check it before billing</div>
-        <div class="cust-field"><label style="font-size:11.5px;font-weight:700;">Your name</label>
+        <div class="cust-field"><label style="font-size:11.5px;font-weight:700;">Your name *</label>
           <input type="text" id="custName" placeholder="Enter your name" value="${esc(state._custName || '')}"></div>
+        <div class="cust-field"><label style="font-size:11.5px;font-weight:700;">Phone number *</label>
+          <input type="tel" id="custPhone" inputmode="tel" placeholder="Enter your phone number" value="${esc(state._custPhone || '')}"></div>
+        <div class="cust-field"><label style="font-size:11.5px;font-weight:700;">Address *</label>
+          <input type="text" id="custAddress" placeholder="House / street / area" value="${esc(state._custAddress || '')}"></div>
         <div class="receipt-lines">${lines}</div>
         <div class="receipt-total"><span>Estimated total</span><span class="mono">${fmtMoney(custCartTotal())}</span></div>
         ${state.error ? `<div class="errbox" style="text-align:center;font-weight:700;">${esc(state.error)}</div>` : ''}
@@ -1180,6 +1185,8 @@ function attachCustomerHandlers() {
   document.getElementById('custNewOrder')?.addEventListener('click', () => { state._custDone = null; render(); });
   document.getElementById('custRefresh')?.addEventListener('click', async () => { await refreshFromCloud(); render(); });
   document.getElementById('custName')?.addEventListener('input', (e) => { state._custName = e.target.value; });
+  document.getElementById('custPhone')?.addEventListener('input', (e) => { state._custPhone = e.target.value; });
+  document.getElementById('custAddress')?.addEventListener('input', (e) => { state._custAddress = e.target.value; });
   document.getElementById('custSearch')?.addEventListener('input', (e) => {
     state._custQuery = e.target.value; render();
     const el = document.getElementById('custSearch'); el.focus(); el.selectionStart = el.selectionEnd = el.value.length;
@@ -1211,14 +1218,17 @@ function attachCustomerHandlers() {
   document.getElementById('custSend')?.addEventListener('click', async () => {
     const name = (state._custName || '').trim();
     if (!state._custCart.length) { state.error = 'Add at least one product first.'; render(); return; }
+    const phone = (state._custPhone || '').trim(), address = (state._custAddress || '').trim();
     if (!name) { state.error = 'Please enter your name.'; render(); return; }
+    if (phone.replace(/\D/g, '').length < 10) { state.error = 'Please enter a valid phone number (at least 10 digits).'; render(); return; }
+    if (!address) { state.error = 'Please enter your address.'; render(); return; }
     const btn = document.getElementById('custSend');
     if (btn) { btn.disabled = true; btn.textContent = 'Sending…'; }
-    const rec = { id: uid(), orderNo: 'ORD-' + Math.floor(1000 + Math.random() * 9000), customerName: name,
+    const rec = { id: uid(), orderNo: 'ORD-' + Math.floor(1000 + Math.random() * 9000), customerName: name, phone, address,
       items: state._custCart, status: 'pending', createdAt: Date.now() };
     state.orders.push(rec);
     const ok = await saveRecord('orders', rec);
-    if (ok) { state._custDone = rec.orderNo; state._custCart = []; state._custName = ''; state.error = null; }
+    if (ok) { state._custDone = rec.orderNo; state._custCart = []; state.error = null; }   // name, phone and address stay filled for the next order
     else { state.orders = state.orders.filter(o => o.id !== rec.id); }
     render();
   });
