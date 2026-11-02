@@ -297,14 +297,21 @@ function btDisconnect() {
   BT.char = null; BT.note = 'Printer disconnected.'; render();
 }
 
-async function btSend(bytes) {
+async function btSend(bytes, chunk) {
   if (!btReady()) { if (!(await btReconnect())) throw new Error('Bluetooth printer is not connected.'); }
-  const c = BT.char, CH = 20;
-  for (let i = 0; i < bytes.length; i += CH) {
+  const c = BT.char;
+  let CH = chunk || 20, i = 0;
+  while (i < bytes.length) {
     const part = bytes.slice(i, i + CH);
-    if (c.properties.writeWithoutResponse && c.writeValueWithoutResponse) await c.writeValueWithoutResponse(part);
-    else await c.writeValue(part);
-    await new Promise(r => setTimeout(r, 18));
+    try {
+      if (c.properties.writeWithoutResponse && c.writeValueWithoutResponse) await c.writeValueWithoutResponse(part);
+      else await c.writeValue(part);
+      i += CH;
+      await new Promise(r => setTimeout(r, CH > 20 ? 25 : 18));
+    } catch (e) {
+      if (CH > 20) { CH = 20; continue; }     // printer did not accept big pieces: retry in small pieces
+      throw e;
+    }
   }
 }
 
@@ -356,13 +363,203 @@ function btBuild(bill) {
   cmd(0x1D, 0x56, 0x42, 0x00);           // cut (ignored by printers without a cutter)
   return new Uint8Array(bytes);
 }
-async function btPrintBill(bill) { await btSend(btBuild(bill)); }
+// ---------- picture printing (so Tamil and any other language prints correctly) ----------
+const BT_FONT = '"Noto Sans Tamil","Nirmala UI","Latha","Tamil Sangam MN","Noto Sans",sans-serif';
+function btNeedsImage(bill) {
+  const mode = btSaved().mode || 'auto';
+  if (mode === 'image') return true;
+  if (mode === 'text') return false;
+  const non = t => /[^\x00-\x7F]/.test(String(t == null ? '' : t));
+  return non(bill.customerName) || non(bill.billedBy) || bill.items.some(i => non(i.productName) || non(i.packLabel));
+}
+function btGraphemes(str) {
+  try { if (Intl.Segmenter) return Array.from(new Intl.Segmenter(undefined, { granularity: 'grapheme' }).segment(str), x => x.segment); } catch (e) {}
+  return Array.from(str);
+}
+function btBuildImage(bill) {
+  const cols = parseInt(btSaved().cols) || 32;
+  const W = cols <= 32 ? 384 : 576;                 // dots across: 58mm = 384, 80mm = 576
+  const pad = 6, FS = cols <= 32 ? 22 : 24, LH = Math.round(FS * 1.5), maxW = W - pad * 2;
+  const m = document.createElement('canvas').getContext('2d');
+  const font = (bold, size) => (bold ? 'bold ' : '') + (size || FS) + 'px ' + BT_FONT;
+  const wrap = (text, width, f) => {
+    m.font = f; const out = []; let cur = '';
+    const put = (piece) => {
+      if (!cur || m.measureText(cur + piece).width <= width) { cur += piece; return; }
+      out.push(cur.trimEnd()); cur = piece.trimStart();
+    };
+    for (const word of String(text == null ? '' : text).split(/(\s+)/)) {
+      if (m.measureText(word).width <= width) { put(word); continue; }
+      for (const g of btGraphemes(word)) put(g);       // very long word: break between letters, never inside one
+    }
+    out.push(cur); return out;
+  };
+  const ops = [];
+  const center = (t, bold, size) => wrap(t, maxW, font(bold, size)).forEach(l => ops.push({ k: 'c', t: l, f: font(bold, size), h: Math.round((size || FS) * 1.5) }));
+  const left = (t, bold) => wrap(t, maxW, font(bold)).forEach(l => ops.push({ k: 'l', t: l, r: '', f: font(bold), h: LH }));
+  const lr = (l, r, bold) => {
+    const f = font(bold); m.font = f;
+    const rw = Math.ceil(m.measureText(r).width) + 14;
+    const ls = wrap(l, Math.max(60, maxW - rw), f);
+    ls.forEach((t, i) => ops.push({ k: 'l', t, r: i === ls.length - 1 ? r : '', f, h: LH }));
+  };
+  const dash = () => ops.push({ k: 'd', h: 14 });
+
+  center('STOREBILL', true, FS + 10);
+  center('Kirana & General Store'); center('Sales Receipt');
+  dash();
+  lr('Bill No.', bill.billNumber); lr('Date', new Date(bill.createdAt).toLocaleString());
+  lr('Customer', bill.customerName); lr('Billed by', bill.billedBy);
+  dash();
+  for (const i of bill.items) {
+    left(i.productName, true);
+    lr('  ' + (i.packLabel ? i.packCount + ' x ' + i.packLabel + ' @ ' + btMoney(i.packPrice) : i.quantity + ' ' + i.unit + ' x ' + btMoney(i.unitPricePerBase)), btMoney(i.lineTotal));
+  }
+  dash();
+  lr('Total items', String(bill.items.length));
+  lr('TOTAL', btMoney(bill.totalAmount), true);
+  dash();
+  center('Thank you - visit again!');
+
+  const H = ops.reduce((s, o) => s + o.h, 0) + 24;
+  const cv = document.createElement('canvas'); cv.width = W; cv.height = H;
+  const ctx = cv.getContext('2d');
+  ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, W, H);
+  ctx.fillStyle = '#000'; ctx.textBaseline = 'middle';
+  let y = 4;
+  for (const o of ops) {
+    if (o.k === 'd') { ctx.fillRect(pad, y + 6, maxW, 2); }
+    else {
+      ctx.font = o.f;
+      if (o.k === 'c') { ctx.textAlign = 'center'; ctx.fillText(o.t, W / 2, y + o.h / 2); }
+      else {
+        ctx.textAlign = 'left'; ctx.fillText(o.t, pad, y + o.h / 2);
+        if (o.r) { ctx.textAlign = 'right'; ctx.fillText(o.r, W - pad, y + o.h / 2); }
+      }
+    }
+    y += o.h;
+  }
+  // convert to black/white dots and send as ESC/POS raster bands
+  const px = ctx.getImageData(0, 0, W, H).data, wb = W / 8, out = [0x1B, 0x40];
+  for (let y0 = 0; y0 < H; y0 += 96) {
+    const h = Math.min(96, H - y0);
+    out.push(0x1D, 0x76, 0x30, 0x00, wb & 255, wb >> 8, h & 255, h >> 8);
+    for (let r = 0; r < h; r++) {
+      for (let xb = 0; xb < wb; xb++) {
+        let byte = 0;
+        for (let bit = 0; bit < 8; bit++) {
+          const idx = ((y0 + r) * W + xb * 8 + bit) * 4;
+          if (0.299 * px[idx] + 0.587 * px[idx + 1] + 0.114 * px[idx + 2] < 150) byte |= 0x80 >> bit;
+        }
+        out.push(byte);
+      }
+    }
+  }
+  out.push(0x1B, 0x64, 4, 0x1D, 0x56, 0x42, 0x00);
+  return new Uint8Array(out);
+}
+// ---------- FAST Tamil printing: English as normal text, only the Tamil lines become small pictures ----------
+function btWrapPx(m, text, width, f) {
+  m.font = f; const out = []; let cur = '';
+  const put = (piece) => {
+    if (!cur || m.measureText(cur + piece).width <= width) { cur += piece; return; }
+    out.push(cur.trimEnd()); cur = piece.trimStart();
+  };
+  for (const word of String(text == null ? '' : text).split(/(\s+)/)) {
+    if (m.measureText(word).width <= width) { put(word); continue; }
+    for (const g of btGraphemes(word)) put(g);
+  }
+  out.push(cur); return out;
+}
+function btBuildHybrid(bill) {
+  const cols = parseInt(btSaved().cols) || 32;
+  const W = cols <= 32 ? 384 : 576, FS = cols <= 32 ? 22 : 24, pad = 4;
+  const m = document.createElement('canvas').getContext('2d');
+  const bytes = [];
+  const cmd = (...b) => bytes.push(...b);
+  const text = t => { for (const ch of btClean(t)) bytes.push(ch.charCodeAt(0)); };
+  const line = t => { text(t); cmd(0x0A); };
+  const dash = () => line('-'.repeat(cols));
+  const plain = t => !/[^\x20-\x7E\u20B9]/.test(String(t == null ? '' : t));
+
+  // one Tamil line -> a thin picture only as wide as the words (full width only when a right-side amount is needed)
+  const strip = (l, r, bold) => {
+    const f = (bold ? 'bold ' : '') + FS + 'px ' + BT_FONT;
+    m.font = f;
+    const H = Math.round(FS * 1.55);
+    const rw = r ? Math.ceil(m.measureText(r).width) + 12 : 0;
+    const parts = btWrapPx(m, l, W - pad * 2 - rw, f);
+    parts.forEach((t, i) => {
+      const rr = i === parts.length - 1 ? r : '';
+      m.font = f;
+      const tw = Math.ceil(m.measureText(t).width) + pad * 2;
+      const w = rr ? W : Math.min(W, Math.ceil(tw / 8) * 8), wb = w / 8;
+      const cv = document.createElement('canvas'); cv.width = w; cv.height = H;
+      const c = cv.getContext('2d');
+      c.fillStyle = '#fff'; c.fillRect(0, 0, w, H);
+      c.fillStyle = '#000'; c.font = f; c.textBaseline = 'middle';
+      c.textAlign = 'left'; c.fillText(t, pad, H / 2);
+      if (rr) { c.textAlign = 'right'; c.fillText(rr, w - pad, H / 2); }
+      const px = c.getImageData(0, 0, w, H).data;
+      cmd(0x1B, 0x61, 0, 0x1D, 0x76, 0x30, 0x00, wb & 255, wb >> 8, H & 255, H >> 8);
+      for (let y = 0; y < H; y++) for (let xb = 0; xb < wb; xb++) {
+        let byte = 0;
+        for (let bit = 0; bit < 8; bit++) {
+          const idx = (y * w + xb * 8 + bit) * 4;
+          if (0.299 * px[idx] + 0.587 * px[idx + 1] + 0.114 * px[idx + 2] < 170) byte |= 0x80 >> bit;
+        }
+        bytes.push(byte);
+      }
+    });
+  };
+  // one logical line: English -> normal fast text, Tamil -> small picture
+  const emit = (l, r, bold) => {
+    if (plain(l) && plain(r)) {
+      if (bold) cmd(0x1B, 0x45, 1);
+      if (r) line(btLR(l, r, cols)); else btWrap(l, cols).forEach(line);
+      if (bold) cmd(0x1B, 0x45, 0);
+    } else strip(l, r || '', bold);
+  };
+
+  cmd(0x1B, 0x40);
+  cmd(0x1B, 0x61, 1); cmd(0x1B, 0x45, 1); cmd(0x1D, 0x21, 0x11);
+  line('STOREBILL');
+  cmd(0x1D, 0x21, 0x00); cmd(0x1B, 0x45, 0);
+  line('Kirana & General Store'); line('Sales Receipt');
+  cmd(0x1B, 0x61, 0);
+  dash();
+  emit('Bill No.', bill.billNumber);
+  emit('Date', new Date(bill.createdAt).toLocaleString());
+  emit('Customer', bill.customerName);
+  emit('Billed by', bill.billedBy);
+  dash();
+  for (const i of bill.items) {
+    emit(i.productName, '', true);
+    emit('  ' + (i.packLabel ? i.packCount + ' x ' + i.packLabel + ' @ ' + btMoney(i.packPrice) : i.quantity + ' ' + i.unit + ' x ' + btMoney(i.unitPricePerBase)), btMoney(i.lineTotal));
+  }
+  dash();
+  emit('Total items', String(bill.items.length));
+  emit('TOTAL', btMoney(bill.totalAmount), true);
+  dash();
+  cmd(0x1B, 0x61, 1); line('Thank you - visit again!'); cmd(0x1B, 0x61, 0);
+  cmd(0x1B, 0x64, 4);
+  cmd(0x1D, 0x56, 0x42, 0x00);
+  return new Uint8Array(bytes);
+}
+async function btPrintBill(bill) {
+  const mode = btSaved().mode || 'auto';
+  const chunk = Number(btSaved().chunk) || 100;
+  if (mode === 'text') await btSend(btBuild(bill));
+  else if (mode === 'image') await btSend(btBuildImage(bill), chunk);
+  else await btSend(btBuildHybrid(bill), chunk);      // auto = fast Tamil (hybrid)
+}
+
 
 async function btTestPrint() {
   BT.note = 'Sending test print…'; render();
   try {
     await btPrintBill({ billNumber:'TEST-000001', createdAt:Date.now(), customerName:'Test', billedBy:'Printer test',
-      totalAmount:0, items:[{ productName:'Bluetooth test line', quantity:1, unit:'piece', unitPricePerBase:0, lineTotal:0 }] });
+      totalAmount:0, items:[{ productName:'Bluetooth test / தமிழ் சோதனை', quantity:1, unit:'piece', unitPricePerBase:0, lineTotal:0 }] });
     BT.note = 'Test sent. If paper came out, the printer is working.';
   } catch (e) { BT.note = 'Test failed: ' + (e.message || e); }
   render();
@@ -395,6 +592,18 @@ function btPanelHtml() {
         <option value="32" ${(s.cols || '32') == '32' ? 'selected' : ''}>32 (58mm paper)</option>
         <option value="42" ${s.cols == '42' ? 'selected' : ''}>42 (80mm paper)</option>
         <option value="48" ${s.cols == '48' ? 'selected' : ''}>48 (80mm, small font)</option>
+      </select></div>
+    <div class="field" style="margin-bottom:6px;"><label>Print style (Tamil support)</label>
+      <select data-bt-field="mode">
+        <option value="auto" ${(s.mode || 'auto') == 'auto' ? 'selected' : ''}>Fast Tamil (recommended) — text + Tamil lines as small pictures</option>
+        <option value="image" ${s.mode == 'image' ? 'selected' : ''}>Whole bill as one picture (slowest)</option>
+        <option value="text" ${s.mode == 'text' ? 'selected' : ''}>Always text (fast, English only)</option>
+      </select></div>
+    <div class="field" style="margin-bottom:6px;"><label>Picture sending speed</label>
+      <select data-bt-field="chunk">
+        <option value="180" ${s.chunk == '180' ? 'selected' : ''}>Fast (try first; falls back if the printer refuses)</option>
+        <option value="100" ${(s.chunk || '100') == '100' ? 'selected' : ''}>Normal</option>
+        <option value="20" ${s.chunk == '20' ? 'selected' : ''}>Slow (use if the picture prints broken)</option>
       </select></div>
     <div class="helptext">Pair the printer once in your phone/PC Bluetooth settings (PIN usually 0000 or 1234), then tap Connect. Browsers cannot connect by typing a MAC address — they only let you pick the device from the browser's popup, so the MAC field is just saved for your reference.</div>
   </div>`;
