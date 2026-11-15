@@ -27,8 +27,6 @@
   .brand h1{font-size:19px;}
   .brand .tag{font-size:11px;color:var(--ink-soft);text-transform:uppercase;letter-spacing:.08em;}
   .who{display:flex;align-items:center;gap:12px;font-size:13px;color:var(--ink-soft);}
-  .role-chip{font-size:10px;text-transform:uppercase;letter-spacing:.06em;padding:3px 9px;border-radius:999px;font-weight:700;}
-  .role-chip.admin{background:var(--brick);color:#fff;} .role-chip.labor{background:var(--teal);color:#fff;}
   .sync{font-size:11px;font-weight:700;padding:3px 9px;border-radius:999px;white-space:nowrap;}
   .sync.ok{background:#E4EFE9;color:var(--teal-deep);}
   .sync.bad{background:#F5E0DA;color:var(--brick-deep);}
@@ -158,29 +156,6 @@
   .receipt-page:last-child{break-after:auto;page-break-after:auto;}
   .keep-together{break-inside:avoid;page-break-inside:avoid;}
 
-  /* ---------- splash / intro animation (5 seconds) ---------- */
-  #splash{position:fixed;inset:0;z-index:9999;background:#2B241A;display:flex;flex-direction:column;align-items:center;justify-content:center;
-    transition:opacity .6s ease, visibility .6s ease;}
-  #splash.hide{opacity:0;visibility:hidden;}
-  #splash svg{width:132px;height:132px;overflow:visible;}
-  #splash .sp-ring{fill:none;stroke:#C98A2B;stroke-width:3;stroke-dasharray:340;stroke-dashoffset:340;
-    animation:spDraw 1.8s ease-out .2s forwards;}
-  #splash .sp-disc{fill:#C98A2B;opacity:0;transform-origin:60px 60px;transform:scale(.6);
-    animation:spPop .7s cubic-bezier(.2,1.4,.4,1) 1.9s forwards;}
-  #splash .sp-s{fill:none;stroke:#FAF5E9;stroke-width:7;stroke-linecap:round;stroke-linejoin:round;
-    stroke-dasharray:140;stroke-dashoffset:140;animation:spDraw 1.3s ease-in-out 1.3s forwards;}
-  #splash .sp-name{font-family:Georgia,"Times New Roman",serif;font-weight:700;font-size:34px;letter-spacing:.14em;color:#FAF5E9;
-    margin-top:26px;opacity:0;transform:translateY(10px);animation:spUp .8s ease-out 2.6s forwards;}
-  #splash .sp-tag{font-size:12px;letter-spacing:.28em;text-transform:uppercase;color:#C98A2B;margin-top:8px;
-    opacity:0;animation:spUp .8s ease-out 3.1s forwards;}
-  #splash .sp-bar{width:180px;height:3px;border-radius:2px;background:rgba(250,245,233,.15);margin-top:34px;overflow:hidden;}
-  #splash .sp-bar i{display:block;height:100%;width:0;background:#C98A2B;animation:spBar 5s linear forwards;}
-  @keyframes spDraw{to{stroke-dashoffset:0;}}
-  @keyframes spPop{to{opacity:1;transform:scale(1);}}
-  @keyframes spUp{to{opacity:1;transform:translateY(0);}}
-  @keyframes spBar{to{width:100%;}}
-  @media print{#splash{display:none !important;}}
-
   .loading-screen{min-height:100vh;display:flex;align-items:center;justify-content:center;color:var(--ink-soft);}
 
   @media (max-width:880px){
@@ -196,17 +171,6 @@
 </style>
 </head>
 <body>
-
-<div id="splash" aria-hidden="true">
-  <svg viewBox="0 0 120 120">
-    <circle class="sp-disc" cx="60" cy="60" r="52"/>
-    <circle class="sp-ring" cx="60" cy="60" r="52"/>
-    <path class="sp-s" d="M78 40 C70 30 44 31 44 45 C44 60 77 55 77 72 C77 88 49 89 40 77"/>
-  </svg>
-  <div class="sp-name">STOREBILL</div>
-  <div class="sp-tag">Stock &amp; Billing</div>
-  <div class="sp-bar"><i></i></div>
-</div>
 
 <div id="app"></div>
 
@@ -628,7 +592,9 @@ window.addEventListener('load', () => { setTimeout(async () => { if (await btRec
 
 <script>
 /* =========================================================
-   STOREBILL — stock & billing app with CLOUD SYNC (v2)
+   STOREBILL — stock & billing app with CLOUD SYNC (v3)
+   No login: opens straight into the Admin screen.
+   Customers can order at  yoursite/#order
    + Bluetooth printer support (see add-on script above)
    ========================================================= */
 
@@ -652,11 +618,10 @@ let state = {
   loaded: false,
   config: null,
   products: [],
-  labor: [],
   bills: [],
   categories: [],
   orders: [],
-  session: null,
+  session: { username: 'Admin', role: 'ADMIN' },   // no login: always Admin
   view: 'overview',
   cart: [],
   activeProduct: null,
@@ -736,7 +701,6 @@ async function loadAll() {
   cloudFailed = false;
   state.config = await loadConfig();
   state.products = await loadCollection('products');
-  state.labor = await loadCollection('labor');
   state.bills = await loadCollection('bills');
   state.categories = await loadCollection('categories');
   state.orders = await loadCollection('orders');
@@ -745,12 +709,11 @@ async function loadAll() {
 // Pull newest data. Returns true if anything changed.
 async function refreshFromCloud() {
   if (!CLOUD_DB_URL) return false;
-  const snap = () => JSON.stringify([state.config, state.products, state.labor, state.bills, state.categories, state.orders]);
+  const snap = () => JSON.stringify([state.config, state.products, state.bills, state.categories, state.orders]);
   const before = snap();
   cloudFailed = false;
   const cfg = await loadConfig(); if (cfg) state.config = cfg;
   state.products = await loadCollection('products');
-  state.labor = await loadCollection('labor');
   state.bills = await loadCollection('bills');
   state.categories = await loadCollection('categories');
   state.orders = await loadCollection('orders');
@@ -839,6 +802,8 @@ function updateSyncBadge() {
 }
 
 // ---------- render ----------
+function isCustomerPage() { return !!state.customerMode || location.hash === '#order'; }
+
 function render() {
   const app = document.getElementById('app');
   if (!state.loaded) { app.innerHTML = `<div class="loading-screen">Loading StoreBill…</div>`; return; }
@@ -855,16 +820,13 @@ function render() {
     });
     return;
   }
-  if (!state.config) { app.innerHTML = renderSetup(); attachSetupHandlers(); return; }
-  if (!state.session && state.customerMode) { app.innerHTML = renderCustomer(); attachCustomerHandlers(); return; }
-  if (!state.session) { app.innerHTML = renderLogin(); attachLoginHandlers(); return; }
+  if (!state.config) state.config = {};                  // first run: no setup / password needed
+  if (isCustomerPage()) { app.innerHTML = renderCustomer(); attachCustomerHandlers(); return; }
   app.innerHTML = renderApp();
   attachAppHandlers();
 }
 
 function renderTopbar() {
-  const roleChip = state.session.role === 'ADMIN'
-    ? `<span class="role-chip admin">Admin</span>` : `<span class="role-chip labor">Labor</span>`;
   const sb = syncBadgeInfo();
   return `
   <div class="topbar">
@@ -874,94 +836,16 @@ function renderTopbar() {
     </div>
     <div class="who">
       <span class="sync ${sb.cls}" id="syncBadge">${sb.text}</span>
-      ${roleChip}
-      <span>${esc(state.session.username)}</span>
-      <button class="btn btn-outline btn-sm" id="logoutBtn">Log out</button>
+      <button class="btn btn-outline btn-sm" id="goCustomerBtn">Customer order page</button>
     </div>
   </div>`;
 }
 
-// ----- setup (first run: create the one Admin) -----
-function renderSetup() {
-  return `
-  <div class="auth-wrap"><div class="card auth-card">
-    <span class="mark" style="display:inline-flex;align-items:center;justify-content:center;background:var(--turmeric);
-      color:#fff;border-radius:50%;width:44px;height:44px;font-family:Georgia,serif;font-weight:700;">S</span>
-    <h1>Welcome to StoreBill</h1>
-    <div class="sub">First time here — create your one Admin account. This is the only Admin the app will ever have.</div>
-    ${state.error ? `<div class="errbox">${esc(state.error)}</div>` : ''}
-    <form id="setupForm">
-      <div class="field"><label>Admin username</label><input type="text" id="su-username" required></div>
-      <div class="field"><label>Password</label><input type="password" id="su-password" required minlength="4"></div>
-      <button class="btn btn-primary" style="width:100%;justify-content:center;" type="submit">Create Admin account</button>
-    </form>
-  </div></div>`;
-}
-function attachSetupHandlers() {
-  document.getElementById('setupForm').addEventListener('submit', async (e) => {
-    e.preventDefault();
-    const username = document.getElementById('su-username').value.trim();
-    const password = document.getElementById('su-password').value;
-    if (!username || password.length < 4) { state.error = 'Enter a username and a password (4+ characters).'; render(); return; }
-    // Make sure an Admin was not created meanwhile on another device
-    const existing = await loadConfig();
-    if (existing) { state.config = existing; state.error = 'An Admin account already exists — please sign in.'; render(); return; }
-    const cfg = { adminUsername: username, adminPassword: password };
-    state.error = null;
-    const ok = await saveConfig(cfg);
-    if (!ok) { localSet('config', null); render(); return; }   // do not continue unless the cloud has it
-    state.config = cfg;
-    state.session = { username, role: 'ADMIN' };
-    state.error = null;
-    render();
-  });
-}
-
-// ----- login -----
-function renderLogin() {
-  return `
-  <div class="auth-wrap"><div class="card auth-card">
-    <span class="mark" style="display:inline-flex;align-items:center;justify-content:center;background:var(--turmeric);
-      color:#fff;border-radius:50%;width:44px;height:44px;font-family:Georgia,serif;font-weight:700;">S</span>
-    <h1>StoreBill</h1>
-    <div class="sub">Sign in to open the counter</div>
-    ${state.error ? `<div class="errbox">${esc(state.error)}</div>` : ''}
-    <form id="loginForm">
-      <div class="field"><label>Username</label><input type="text" id="li-username" required></div>
-      <div class="field"><label>Password</label><input type="password" id="li-password" required></div>
-      <button class="btn btn-primary" style="width:100%;justify-content:center;" type="submit">Sign in</button>
-    </form>
-    <button class="btn btn-outline" id="customerModeBtn" style="width:100%;justify-content:center;margin-top:10px;">I am a customer — place my order</button>
-  </div></div>`;
-}
-function attachLoginHandlers() {
-  document.getElementById('customerModeBtn')?.addEventListener('click', () => { state.customerMode = true; state._custDone = null; state.error = null; render(); });
-  document.getElementById('loginForm').addEventListener('submit', async (e) => {
-    e.preventDefault();
-    const username = document.getElementById('li-username').value.trim();
-    const password = document.getElementById('li-password').value;
-    await refreshFromCloud();
-    if (username === state.config.adminUsername && password === state.config.adminPassword) {
-      state.session = { username, role: 'ADMIN' }; state.error = null; state.view = 'overview'; render(); return;
-    }
-    const labor = state.labor.find(l => l.username === username && l.password === password);
-    if (labor) {
-      if (!labor.active) { state.error = 'This account has been disabled by the Admin.'; render(); return; }
-      state.session = { username, role: 'LABOR' }; state.error = null; state.view = 'billing'; render(); return;
-    }
-    state.error = 'Incorrect username or password.'; render();
-  });
-}
-
 // ----- main app shell -----
 function renderApp() {
-  if (state.session.role === 'LABOR') {
-    state.view = 'billing';
-    return renderTopbar() + renderBillingScreen();
-  }
   const nav = [
-    ['overview','Overview'], ['products','Products & Stock'], ['categories','Categories'], ['labor','Labor Accounts'],
-    ['bills','Bill History'], ['settings','Account Settings'], ['billing','Billing Counter'],
+    ['overview','Overview'], ['products','Products & Stock'], ['categories','Categories'],
+    ['bills','Bill History'], ['settings','Settings'], ['billing','Billing Counter'],
   ];
   const navHtml = nav.map(([key,label]) => `
     <button class="navlink ${state.view===key?'active':''} ${key==='billing'?'navsep':''}" data-nav="${key}">${label}${key==='billing'?' →':''}</button>
@@ -970,10 +854,10 @@ function renderApp() {
   if (state.view === 'overview') content = renderOverview();
   else if (state.view === 'products') content = renderProducts();
   else if (state.view === 'categories') content = renderCategories();
-  else if (state.view === 'labor') content = renderLabor();
   else if (state.view === 'bills') content = renderBills();
   else if (state.view === 'settings') content = renderSettings();
   else if (state.view === 'billing') content = renderBillingScreen(true);
+  else { state.view = 'overview'; content = renderOverview(); }
 
   return renderTopbar() + `
   <div class="shell">
@@ -1002,7 +886,7 @@ function renderOverview() {
 
   return `
   ${msgBanner()}
-  <h2 style="margin-bottom:16px;">Good day, ${esc(state.session.username)}</h2>
+  <h2 style="margin-bottom:16px;">Good day</h2>
   <div class="stat-grid">
     <div class="card"><div class="label">Total products</div><div class="value">${total}</div></div>
     <div class="card warn"><div class="label">Out of stock</div><div class="value">${outOfStock}</div></div>
@@ -1023,7 +907,6 @@ function renderOverview() {
   </div>` : ''}
   <div style="display:flex;gap:14px;margin-bottom:20px;flex-wrap:wrap;">
     <button class="btn btn-primary" data-nav="products">+ Add new product</button>
-    <button class="btn btn-outline" data-nav="labor">+ Add labor account</button>
     <button class="btn btn-outline" data-nav="billing">Open billing counter</button>
   </div>
   <div class="card">
@@ -1356,10 +1239,11 @@ function renderCustomer() {
       <div><div class="rl-name">${esc(item.name)}</div><div class="rl-meta">${item.packPrice != null ? item.packCount + ' × ' + esc(item.packLabel) + ' @ ' + fmtMoney(item.packPrice) : item.quantity + ' ' + item.unit + ' × ' + fmtMoney(item.pricePerBase) + '/' + item.baseUnit}</div></div>
       <div>${fmtMoney(priceForCartLine(item))} <span class="rl-remove" data-cremove="${idx}">✕</span></div>
     </div>`).join('') : `<div class="receipt-empty">Your order is empty. Add products from the list.</div>`;
+  const backBtn = location.hash === '#order' ? '' : `<button class="btn btn-outline btn-sm" id="custBack">← Back to store</button>`;
   return `
   <div class="topbar">
     <div class="brand"><span class="mark">S</span><div><h1>StoreBill</h1><div class="tag">Customer order</div></div></div>
-    <div class="who"><button class="btn btn-outline btn-sm" id="custBack">← Staff login</button></div>
+    <div class="who">${backBtn}</div>
   </div>
   <div class="billing-shell">
     <div class="product-pane">
@@ -1441,51 +1325,6 @@ function attachCustomerHandlers() {
     else { state.orders = state.orders.filter(o => o.id !== rec.id); }
     render();
   });
-}
-
-// ----- labor -----
-function renderLabor() {
-  return `
-  ${msgBanner()}
-  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;">
-    <h2>Labor accounts</h2>
-    <button class="btn btn-primary" id="addLaborBtn">+ New labor account</button>
-  </div>
-  <div class="card">
-    <table class="list">
-      <thead><tr><th>Username</th><th>Phone</th><th>Status</th><th></th></tr></thead>
-      <tbody>
-        ${state.labor.length ? state.labor.map(l => `
-        <tr>
-          <td>${esc(l.username)}</td><td>${esc(l.phone)||'—'}</td>
-          <td><span class="badge ${l.active?'in':'out'}">${l.active?'Active':'Disabled'}</span></td>
-          <td style="text-align:right;white-space:nowrap;">
-            <button class="btn btn-outline btn-sm" data-toggle-labor="${esc(l.id)}">${l.active?'Disable':'Enable'}</button>
-            <button class="btn btn-danger btn-sm" data-delete-labor="${esc(l.id)}">Delete</button>
-          </td>
-        </tr>`).join('') : `<tr><td colspan="4" style="text-align:center;color:var(--ink-soft);padding:20px;">No labor accounts yet.</td></tr>`}
-      </tbody>
-    </table>
-  </div>
-  ${renderLaborModal()}`;
-}
-function renderLaborModal() {
-  if (!state._laborModalOpen) return '';
-  return `
-  <div class="modal-backdrop open" id="laborModalBackdrop">
-    <div class="modal">
-      <h3>New labor account</h3>
-      <form id="laborForm">
-        <div class="field"><label>Username</label><input type="text" id="lf-username" required></div>
-        <div class="field"><label>Password</label><input type="password" id="lf-password" required minlength="4"></div>
-        <div class="field"><label>Phone (optional)</label><input type="text" id="lf-phone"></div>
-        <div style="display:flex;gap:8px;">
-          <button class="btn btn-primary" type="submit" style="flex:1;justify-content:center;">Create account</button>
-          <button class="btn btn-outline" type="button" id="cancelLaborModal">Cancel</button>
-        </div>
-      </form>
-    </div>
-  </div>`;
 }
 
 // ----- bills -----
@@ -1581,7 +1420,7 @@ function renderCategoryBar() {
   return `<div class="cat-bar">${chips}</div>${catSearch}`;
 }
 
-// ----- billing counter (used by both Labor and Admin) -----
+// ----- billing counter -----
 function renderBillingScreen(isAdmin) {
   const q = (state._billingQuery || '').toLowerCase();
   const list = filterBillingProducts();
@@ -1594,7 +1433,7 @@ function renderBillingScreen(isAdmin) {
       <div class="cat">${esc(p.category)||'&nbsp;'}</div>
       <div class="price">${fmtMoney(p.pricePerBase)} / ${p.baseUnit}</div>
       <div class="stock">${displayQty(p)} in stock</div>
-    </div>`).join('') : `<div class="receipt-empty">No products ${q?'match your search':'yet — ask the Admin to add some'}.</div>`;
+    </div>`).join('') : `<div class="receipt-empty">No products ${q?'match your search':'yet — add some in Products & Stock'}.</div>`;
 
   const lines = state.cart.length ? state.cart.map((item, idx) => `
     <div class="receipt-line">
@@ -1673,21 +1512,12 @@ function renderAddToCartModal() {
   </div>`;
 }
 
-// ----- account settings -----
+// ----- settings -----
 function renderSettings() {
   return `
   ${msgBanner()}
-  <h2 style="margin-bottom:16px;">Account settings</h2>
+  <h2 style="margin-bottom:16px;">Settings</h2>
   <div class="card" style="max-width:420px;">
-    <p style="margin-top:0;font-size:13.5px;color:var(--ink-soft);">Update the Admin username and/or password. Enter your current password to confirm the change.</p>
-    <form id="settingsForm">
-      <div class="field"><label>New username</label><input type="text" id="st-username" value="${esc(state.config.adminUsername)}" required></div>
-      <div class="field"><label>New password (leave blank to keep current)</label><input type="password" id="st-newpassword" minlength="4"></div>
-      <div class="field"><label>Current password (required to confirm)</label><input type="password" id="st-currentpassword" required></div>
-      <button class="btn btn-primary" type="submit">Save changes</button>
-    </form>
-  </div>
-  <div class="card" style="max-width:420px;margin-top:18px;">
     <h3 style="margin-bottom:6px;">Printer paper</h3>
     <p style="margin-top:0;font-size:13.5px;color:var(--ink-soft);">Choose the paper your bill printer uses. Thermal rolls print each bill only as long as it needs to be.</p>
     <div class="field" style="margin-bottom:0;">
@@ -1700,7 +1530,7 @@ function renderSettings() {
     <h3 style="margin-bottom:6px;">Cloud sync</h3>
     <p style="margin:0;font-size:13.5px;color:var(--ink-soft);">${CLOUD_DB_URL
       ? (cloudFailed ? '⚠ Cloud database is not reachable right now: ' + esc(cloudErrorText)
-                     : '✓ Connected — products, labor accounts and bills are saved permanently and refresh automatically on every device every ' + (SYNC_INTERVAL_MS/1000) + ' seconds.')
+                     : '✓ Connected — products and bills are saved permanently and refresh automatically on every device every ' + (SYNC_INTERVAL_MS/1000) + ' seconds.')
       : '⚠ Not connected. Data is saved on this device only. Add your Firebase URL to CLOUD_DB_URL in the code to share data across devices.'}</p>
   </div>
   <div style="max-width:420px;">${btPanelHtml()}</div>`;
@@ -1709,34 +1539,18 @@ function currentPaper() { return (state.config && state.config.paper && PAPERS[s
 function attachSettingsHandlers() {
   document.getElementById('st-paper')?.addEventListener('change', async (e) => {
     state.error = null; state.message = null;
+    state.config = state.config || {};
     state.config.paper = e.target.value;
     const ok = await saveConfig(state.config);
     if (ok) state.message = 'Printer paper set to ' + PAPERS[state.config.paper].label + '.';
-    render();
-  });
-  document.getElementById('settingsForm')?.addEventListener('submit', async (e) => {
-    e.preventDefault();
-    state.error = null; state.message = null;
-    const newUsername = document.getElementById('st-username').value.trim();
-    const newPassword = document.getElementById('st-newpassword').value;
-    const currentPassword = document.getElementById('st-currentpassword').value;
-    if (currentPassword !== state.config.adminPassword) {
-      state.error = 'Current password is incorrect.'; render(); return;
-    }
-    if (!newUsername) { state.error = 'Username cannot be empty.'; render(); return; }
-    if (newPassword && newPassword.length < 4) { state.error = 'New password must be at least 4 characters.'; render(); return; }
-    state.config.adminUsername = newUsername;
-    if (newPassword) state.config.adminPassword = newPassword;
-    const ok = await saveConfig(state.config);
-    if (ok) { state.session.username = newUsername; state.message = 'Account settings updated.'; }
     render();
   });
 }
 
 // ---------- event wiring ----------
 function attachAppHandlers() {
-  document.getElementById('logoutBtn')?.addEventListener('click', () => {
-    state.session = null; state.cart = []; state.error = null; state.message = null; render();
+  document.getElementById('goCustomerBtn')?.addEventListener('click', () => {
+    state.customerMode = true; state._custDone = null; state.error = null; render();
   });
   document.querySelectorAll('[data-nav]').forEach(el => el.addEventListener('click', async () => {
     state.view = el.dataset.nav; state.message = null; state.error = null;
@@ -1747,9 +1561,8 @@ function attachAppHandlers() {
     await refreshFromCloud(); render();
   });
 
-  if (state.view === 'products' || (state.session.role==='ADMIN' && document.getElementById('addProductBtn'))) attachProductHandlers();
+  if (state.view === 'products') attachProductHandlers();
   if (state.view === 'categories') attachCategoryHandlers();
-  if (state.view === 'labor') attachLaborHandlers();
   if (state.view === 'bills') attachBillsHandlers();
   if (state.view === 'settings') attachSettingsHandlers();
   if (state.view === 'billing') attachBillingHandlers();
@@ -1830,45 +1643,6 @@ function attachProductHandlers() {
     const ok = await saveRecord('products', rec);
     if (ok) state.message = `'${name}' saved to the cloud.`;
     state._productModalOpen = false; state._editingProduct = null;
-    render();
-  });
-}
-
-function attachLaborHandlers() {
-  document.getElementById('addLaborBtn')?.addEventListener('click', () => { state._laborModalOpen = true; render(); });
-  document.getElementById('cancelLaborModal')?.addEventListener('click', () => { state._laborModalOpen = false; render(); });
-  document.querySelectorAll('[data-toggle-labor]').forEach(el => el.addEventListener('click', async () => {
-    const l = state.labor.find(l => l.id === el.dataset.toggleLabor);
-    if (!l) return;
-    state.error = null; state.message = null;
-    l.active = !l.active;
-    await saveRecord('labor', l);
-    render();
-  }));
-  document.querySelectorAll('[data-delete-labor]').forEach(el => el.addEventListener('click', async () => {
-    if (!confirm('Delete this labor account? This cannot be undone.')) return;
-    const id = el.dataset.deleteLabor;
-    state.error = null; state.message = null;
-    state.labor = state.labor.filter(l => l.id !== id);
-    const ok = await deleteRecord('labor', id);
-    if (ok) state.message = 'Labor account removed.';
-    render();
-  }));
-  document.getElementById('laborForm')?.addEventListener('submit', async (e) => {
-    e.preventDefault();
-    const username = document.getElementById('lf-username').value.trim();
-    const password = document.getElementById('lf-password').value;
-    if (!username || password.length < 4) return;
-    await refreshFromCloud();
-    if (state.labor.some(l => l.username === username) || username === state.config.adminUsername) {
-      state.error = 'That username is already taken.'; render(); return;
-    }
-    const rec = { id: uid(), username, password, phone: document.getElementById('lf-phone').value.trim(), active: true };
-    state.labor.push(rec);
-    state.error = null; state.message = null;
-    const ok = await saveRecord('labor', rec);
-    if (ok) state.message = 'Labor account created.';
-    state._laborModalOpen = false;
     render();
   });
 }
@@ -2188,10 +1962,10 @@ let pendingRender = false;
 function userIsBusy() {
   const a = document.activeElement;
   const typing = a && (a.tagName === 'INPUT' || a.tagName === 'SELECT' || a.tagName === 'TEXTAREA');
-  return typing || state._productModalOpen || state._laborModalOpen || state._cartModalOpen || !!state._catModalKey || state._editLineIdx != null || printing;
+  return typing || state._productModalOpen || state._cartModalOpen || !!state._catModalKey || state._editLineIdx != null || printing;
 }
 setInterval(async () => {
-  if (!CLOUD_DB_URL || !state.loaded || !state.session || syncBusy || document.hidden || printing) return;
+  if (!CLOUD_DB_URL || !state.loaded || syncBusy || document.hidden || printing) return;
   syncBusy = true;
   try {
     if (await refreshFromCloud()) pendingRender = true;
@@ -2206,7 +1980,7 @@ setInterval(async () => {
 
 // Refresh immediately when the user comes back to the tab / app
 document.addEventListener('visibilitychange', async () => {
-  if (document.hidden || !CLOUD_DB_URL || !state.session || syncBusy || printing) return;
+  if (document.hidden || !CLOUD_DB_URL || !state.loaded || syncBusy || printing) return;
   syncBusy = true;
   try {
     if (await refreshFromCloud()) { if (!userIsBusy()) render(); else pendingRender = true; }
@@ -2214,17 +1988,14 @@ document.addEventListener('visibilitychange', async () => {
   } finally { syncBusy = false; }
 });
 
-// ---------- boot ----------
+// switch between the Admin screen and the customer page when the link changes
+window.addEventListener('hashchange', () => { if (state.loaded) render(); });
+
+// ---------- boot (no intro animation, no login: straight into the app) ----------
 (async function boot() {
   render();
   await loadAll();
   render();
-  setTimeout(() => {
-    const sp = document.getElementById('splash');
-    if (!sp) return;
-    sp.classList.add('hide');
-    setTimeout(() => sp.remove(), 700);
-  }, 5000);
 })();
 </script>
 </body>
