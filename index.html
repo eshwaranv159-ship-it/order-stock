@@ -1997,6 +1997,828 @@ window.addEventListener('hashchange', () => { if (state.loaded) render(); });
   await loadAll();
   render();
 })();
+/* StoreBill AI camera add-on — reads packet text (English + Tamil) with Tesseract.js,
+   matches it to your product list, and opens your normal "Add to bill" popup.
+   Needs HTTPS (Netlify is fine) + camera permission. */
+(function () {
+  const CAM = { stream: null, worker: null, busy: false, text: '', matches: [], note: '' };
+
+  function loadLib() {
+    return new Promise((res, rej) => {
+      if (window.Tesseract) return res();
+      const s = document.createElement('script');
+      s.src = 'https://cdn.jsdelivr.net/npm/tesseract.js@5.1.1/dist/tesseract.min.js';
+      s.onload = res; s.onerror = () => rej(new Error('Could not load OCR library. Check internet.'));
+      document.head.appendChild(s);
+    });
+  }
+  async function getWorker() {
+    if (CAM.worker) return CAM.worker;
+    await loadLib();
+    CAM.worker = await Tesseract.createWorker('eng+tam');
+    return CAM.worker;
+  }
+
+  const norm = s => String(s || '').toLowerCase().replace(/[^a-z0-9\u0B80-\u0BFF\s]/g, ' ').replace(/\s+/g, ' ').trim();
+  function lev(a, b) {
+    const m = a.length, n = b.length; if (!m) return n; if (!n) return m;
+    let prev = Array.from({ length: n + 1 }, (_, j) => j);
+    for (let i = 1; i <= m; i++) {
+      const cur = [i];
+      for (let j = 1; j <= n; j++) cur[j] = Math.min(prev[j] + 1, cur[j - 1] + 1, prev[j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1));
+      prev = cur;
+    }
+    return prev[n];
+  }
+  function match(text) {
+    const t = norm(text), words = t.split(' ').filter(w => w.length >= 3), out = [];
+    for (const p of state.products) {
+      const toks = norm(p.name).split(' ').filter(w => w.length >= 3);
+      if (!toks.length) continue;
+      let hit = 0;
+      for (const tk of toks) {
+        if (t.includes(tk)) { hit += 1; continue; }
+        if (tk.length >= 5 && words.some(w => Math.abs(w.length - tk.length) <= 1 && lev(w, tk) <= 1)) hit += 0.8;
+      }
+      const score = hit / toks.length;
+      if (score >= 0.5) out.push({ p, score });
+    }
+    return out.sort((a, b) => b.score - a.score).slice(0, 6);
+  }
+
+  function panel() {
+    let el = document.getElementById('camOverlay');
+    if (!el) { el = document.createElement('div'); el.id = 'camOverlay'; document.body.appendChild(el); }
+    const results = CAM.matches.length ? CAM.matches.map(m => `
+      <button class="btn btn-outline" data-cam-pick="${esc(m.p.id)}" ${inStock(m.p) ? '' : 'disabled'}
+        style="justify-content:space-between;width:100%;margin-bottom:6px;">
+        <span>${esc(m.p.name)} <span class="helptext" style="display:inline;">${Math.round(m.score * 100)}%</span></span>
+        <strong>${inStock(m.p) ? fmtMoney(m.p.pricePerBase) + '/' + m.p.baseUnit : 'Out of stock'}</strong>
+      </button>`).join('')
+      : (CAM.text ? '<div class="receipt-empty">No matching product found. Try again with the name facing the camera, or search manually.</div>' : '');
+    el.innerHTML = `
+    <div class="modal-backdrop open" style="z-index:100;">
+      <div class="modal" style="width:min(440px,94vw);">
+        <h3>📷 Scan product</h3>
+        <video id="camVideo" autoplay playsinline muted style="width:100%;border-radius:8px;background:#000;max-height:46vh;object-fit:cover;"></video>
+        <div class="helptext" style="margin:6px 0 10px;">Hold the packet so the product name is clear and well lit, then tap Scan.</div>
+        <div style="display:flex;gap:8px;margin-bottom:10px;">
+          <button class="btn btn-primary" data-cam="scan" style="flex:1;justify-content:center;" ${CAM.busy ? 'disabled' : ''}>${CAM.busy ? 'Reading…' : 'Scan'}</button>
+          <button class="btn btn-outline" data-cam="close">Close</button>
+        </div>
+        ${CAM.note ? `<div class="helptext" style="margin-bottom:8px;">${esc(CAM.note)}</div>` : ''}
+        <div>${results}</div>
+        ${CAM.text ? `<div class="helptext" style="margin-top:8px;">Text read: ${esc(CAM.text.replace(/\s+/g, ' ').slice(0, 140))}</div>` : ''}
+      </div>
+    </div>`;
+    const v = document.getElementById('camVideo');
+    if (v && CAM.stream) { v.srcObject = CAM.stream; v.play().catch(() => {}); }
+  }
+
+  async function open() {
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+      alert('Camera not available. Open the site with https:// and allow camera permission.'); return;
+    }
+    CAM.text = ''; CAM.matches = []; CAM.note = 'Starting camera…';
+    try {
+      CAM.stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: { ideal: 'environment' }, width: { ideal: 1280 } }, audio: false });
+      CAM.note = '';
+    } catch (e) { CAM.stream = null; CAM.note = 'Camera blocked or not found: ' + (e.message || e); }
+    panel();
+    getWorker().catch(() => {});
+  }
+  function close() {
+    if (CAM.stream) CAM.stream.getTracks().forEach(t => t.stop());
+    CAM.stream = null;
+    const el = document.getElementById('camOverlay'); if (el) el.remove();
+  }
+  async function scan() {
+    const v = document.getElementById('camVideo');
+    if (!v || !v.videoWidth || CAM.busy) return;
+    CAM.busy = true; CAM.note = 'Reading the packet… (first time takes longer)'; panel();
+    try {
+      const cv = document.createElement('canvas');
+      cv.width = v.videoWidth; cv.height = v.videoHeight;
+      cv.getContext('2d').drawImage(v, 0, 0);
+      const w = await getWorker();
+      const { data } = await w.recognize(cv);
+      CAM.text = data.text || '';
+      CAM.matches = match(CAM.text);
+      CAM.note = CAM.matches.length ? 'Tap the correct product to add it to the bill.' : '';
+    } catch (e) { CAM.note = 'Scan failed: ' + (e.message || e); }
+    CAM.busy = false; panel();
+  }
+
+  document.addEventListener('click', e => {
+    const b = e.target.closest && e.target.closest('[data-cam]');
+    if (b) { const a = b.dataset.cam; if (a === 'open') open(); else if (a === 'close') close(); else if (a === 'scan') scan(); return; }
+    const pick = e.target.closest && e.target.closest('[data-cam-pick]');
+    if (pick) {
+      const p = state.products.find(x => x.id === pick.dataset.camPick);
+      if (!p || !inStock(p)) return;
+      close();
+      state.activeProduct = p; state._cartModalOpen = true;   // opens the normal "Add to bill" popup
+      render();
+    }
+  });
+
+  // Auto-add the "📷 Scan" button next to the billing search box (no other code edits needed)
+  function inject() {
+    const box = document.getElementById('billingSearch');
+    if (!box || !box.parentElement || box.parentElement.querySelector('[data-cam="open"]')) return;
+    const btn = document.createElement('button');
+    btn.className = 'btn btn-outline'; btn.setAttribute('data-cam', 'open');
+    btn.title = 'Scan product with camera'; btn.textContent = '📷 Scan';
+    box.parentElement.appendChild(btn);
+  }
+  new MutationObserver(inject).observe(document.getElementById('app') || document.body, { childList: true, subtree: true });
+  inject();
+})();
+
+/* Tamil <-> English sound-based search for StoreBill */
+(function () {
+  const TA = {'க':'k','ங':'n','ச':'s','ஞ':'n','ட':'t','ண':'n','த':'t','ந':'n','ப':'p','ம':'m',
+    'ய':'y','ர':'r','ல':'l','வ':'v','ழ':'l','ள':'l','ற':'r','ன':'n','ஜ':'s','ஷ':'s','ஸ':'s','ஹ':'h'};
+  // turns a word (Tamil or English) into a rough consonant "sound key"
+  function skel(w) {
+    w = String(w || '').toLowerCase();
+    let out = '';
+    // Tamil letters: keep consonants only
+    if (/[\u0B80-\u0BFF]/.test(w)) {
+      for (const ch of w) { if (TA[ch]) out += TA[ch]; else if (/[a-z]/.test(ch)) out += ch; }
+    } else out = w;
+    out = out.replace(/zh/g, 'l').replace(/sh|ch/g, 's').replace(/th|dh/g, 't')
+             .replace(/kh|gh/g, 'k').replace(/ph|bh/g, 'p').replace(/ck/g, 'k').replace(/ng/g, 'n');
+    out = out.replace(/[aeiouh\u0B80-\u0BFF]/g, '')
+             .replace(/[cjzx]/g, 's').replace(/[gq]/g, 'k').replace(/d/g, 't')
+             .replace(/[bf]/g, 'p').replace(/w/g, 'v').replace(/[^a-z]/g, '');
+    return out.replace(/(.)\1+/g, '$1');
+  }
+  function lev(a, b) {
+    const m = a.length, n = b.length; if (!m) return n; if (!n) return m;
+    let prev = Array.from({ length: n + 1 }, (_, j) => j);
+    for (let i = 1; i <= m; i++) {
+      const cur = [i];
+      for (let j = 1; j <= n; j++) cur[j] = Math.min(prev[j] + 1, cur[j - 1] + 1, prev[j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1));
+      prev = cur;
+    }
+    return prev[n];
+  }
+  const keys = s => String(s || '').split(/\s+/).map(skel).filter(k => k.length >= 2);
+  const close = (x, t) => x === t || x.startsWith(t) || (t.length >= 4 && x.length >= 4 && lev(x, t) <= 1);
+
+  const original = matchScore;                       // your existing search ranking
+  matchScore = function (p, q) {
+    const s = original(p, q);
+    if (s >= 0) return s;                            // normal match found: keep it
+    const qt = keys(q); if (!qt.length) return -1;
+    const nameK = keys(p.name), allK = nameK.concat(keys(p.category));
+    if (qt.every(t => nameK.some(x => close(x, t)))) return 3;
+    if (qt.every(t => allK.some(x => close(x, t)))) return 4;
+    if (qt.some(t => allK.some(x => close(x, t)))) return 5;
+    return -1;
+  };
+})();
+
+/* StoreBill AI Camera — Gemini vision (Lens-style): photo -> AI -> matching products */
+(function () {
+  const K_KEY = 'storebill:geminikey', K_MODEL = 'storebill:geminimodel', DEFAULT_MODEL = 'gemini-3.5-flash';
+  const CAM = { stream: null, busy: false, note: '', seen: '', matches: [], editKey: false };
+
+  const ls = {
+    get: k => { try { return localStorage.getItem(k) || ''; } catch (e) { return ''; } },
+    set: (k, v) => { try { localStorage.setItem(k, v); } catch (e) {} }
+  };
+
+  function snapshot(v) {
+    const r = Math.min(1, 1280 / Math.max(v.videoWidth, v.videoHeight));
+    const cv = document.createElement('canvas');
+    cv.width = Math.round(v.videoWidth * r); cv.height = Math.round(v.videoHeight * r);
+    cv.getContext('2d').drawImage(v, 0, 0, cv.width, cv.height);
+    return cv.toDataURL('image/jpeg', 0.85).split(',')[1];
+  }
+
+  async function askGemini(b64) {
+    const list = state.products.map(p => p.id + ' | ' + p.name + ' | ' + (p.category || '')).join('\n');
+    const prompt =
+      'You are a Google Lens style product recogniser for a grocery / kirana shop in Tamil Nadu, India. ' +
+      'The photo shows ONE product (packet, bottle, box, sack or loose item) held to the camera. ' +
+      'Read ALL text on it (Tamil, English or both) and look at the brand, colours, picture and shape. ' +
+      'Then pick the best matching entries from the shop product list below. ' +
+      'List names can be Tamil, English or both, so match by meaning and brand, e.g. "Sakthi Manjal" = "சக்தி மஞ்சள்" = Sakthi turmeric powder. ' +
+      'Choose ONLY ids that exist in the list. If nothing in the list fits, return an empty matches array.\n' +
+      'Return JSON: {"seen":"short description of what you see incl. brand/name text, max 15 words",' +
+      '"name_guess":"the product name as printed",' +
+      '"matches":[{"id":"<id from list>","confidence":<0 to 1>}]} with at most 5 matches, best first.\n\n' +
+      'PRODUCT LIST (id | name | category):\n' + list;
+    const model = ls.get(K_MODEL) || DEFAULT_MODEL;
+    const res = await fetch('https://generativelanguage.googleapis.com/v1beta/models/' + encodeURIComponent(model) + ':generateContent', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'x-goog-api-key': ls.get(K_KEY) },
+      body: JSON.stringify({
+        contents: [{ role: 'user', parts: [
+          { inline_data: { mime_type: 'image/jpeg', data: b64 } },
+          { text: prompt }
+        ] }],
+        generationConfig: { responseMimeType: 'application/json', temperature: 0.1 }
+      })
+    });
+    if (!res.ok) {
+      const t = await res.text();
+      let msg = t.slice(0, 200);
+      try { msg = JSON.parse(t).error.message || msg; } catch (e) {}
+      if (res.status === 400 || res.status === 403) msg = 'Key problem or request refused: ' + msg;
+      if (res.status === 404) msg = 'Model "' + model + '" not found. Press "Settings" and change the model name. ' + msg;
+      if (res.status === 429) msg = 'Too many scans / quota reached. Wait a minute and try again.';
+      throw new Error(msg);
+    }
+    const data = await res.json();
+    const parts = (data.candidates && data.candidates[0] && data.candidates[0].content && data.candidates[0].content.parts) || [];
+    const txt = parts.map(p => p.text || '').join('');
+    const m = txt.match(/\{[\s\S]*\}/);
+    if (!m) throw new Error('The AI reply could not be read. Try again.');
+    return JSON.parse(m[0]);
+  }
+
+  function panel() {
+    let el = document.getElementById('camOverlay');
+    if (!el) { el = document.createElement('div'); el.id = 'camOverlay'; document.body.appendChild(el); }
+    const hasKey = !!ls.get(K_KEY);
+    const keyBox = (!hasKey || CAM.editKey) ? `
+      <div class="field"><label>Gemini API key (saved only in this browser)</label>
+        <input type="password" id="camKey" placeholder="AIza..." autocomplete="off">
+        <label style="margin-top:8px;">Model name</label>
+        <input type="text" id="camModel" value="${esc(ls.get(K_MODEL) || DEFAULT_MODEL)}">
+        <button class="btn btn-primary btn-sm" data-cam="savekey" style="margin-top:6px;">Save</button>
+        <div class="helptext">Create a free key at aistudio.google.com → "Get API key".</div></div>` : '';
+    const results = CAM.matches.length ? CAM.matches.map(m => `
+      <button class="btn btn-outline" data-cam-pick="${esc(m.p.id)}" ${inStock(m.p) ? '' : 'disabled'}
+        style="justify-content:space-between;width:100%;margin-bottom:6px;">
+        <span>${esc(m.p.name)} <span class="helptext" style="display:inline;">${m.c ? Math.round(m.c * 100) + '%' : ''}</span></span>
+        <strong>${inStock(m.p) ? fmtMoney(m.p.pricePerBase) + '/' + m.p.baseUnit : 'Out of stock'}</strong>
+      </button>`).join('')
+      : (CAM.seen ? '<div class="receipt-empty">No matching product in your list. Try again, or search manually.</div>' : '');
+    el.innerHTML = `
+    <div class="modal-backdrop open" style="z-index:100;">
+      <div class="modal" style="width:min(440px,94vw);">
+        <h3>📷 AI product scan</h3>
+        <video id="camVideo" autoplay playsinline muted style="width:100%;border-radius:8px;background:#000;max-height:44vh;object-fit:cover;"></video>
+        <div class="helptext" style="margin:6px 0 10px;">Show the whole packet with the name facing the camera, then tap Scan.</div>
+        ${keyBox}
+        <div style="display:flex;gap:8px;margin-bottom:10px;flex-wrap:wrap;">
+          <button class="btn btn-primary" data-cam="scan" style="flex:1;justify-content:center;" ${(CAM.busy || !hasKey) ? 'disabled' : ''}>${CAM.busy ? 'AI is looking…' : 'Scan'}</button>
+          ${hasKey && !CAM.editKey ? '<button class="btn btn-outline btn-sm" data-cam="changekey">Settings</button>' : ''}
+          <button class="btn btn-outline" data-cam="close">Close</button>
+        </div>
+        ${CAM.note ? `<div class="helptext" style="margin-bottom:8px;">${esc(CAM.note)}</div>` : ''}
+        <div>${results}</div>
+        ${CAM.seen ? `<div class="helptext" style="margin-top:8px;">AI saw: ${esc(CAM.seen)}</div>` : ''}
+      </div>
+    </div>`;
+    const v = document.getElementById('camVideo');
+    if (v && CAM.stream) { v.srcObject = CAM.stream; v.play().catch(() => {}); }
+  }
+
+  async function open() {
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+      alert('Camera not available. Open the site with https:// and allow camera permission.'); return;
+    }
+    CAM.seen = ''; CAM.matches = []; CAM.editKey = false; CAM.note = 'Starting camera…';
+    try {
+      CAM.stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: { ideal: 'environment' }, width: { ideal: 1920 }, height: { ideal: 1080 } }, audio: false });
+      CAM.note = '';
+    } catch (e) { CAM.stream = null; CAM.note = 'Camera blocked or not found: ' + (e.message || e); }
+    panel();
+  }
+  function close() {
+    if (CAM.stream) CAM.stream.getTracks().forEach(t => t.stop());
+    CAM.stream = null;
+    const el = document.getElementById('camOverlay'); if (el) el.remove();
+  }
+  function goAdd(p) { close(); state.activeProduct = p; state._cartModalOpen = true; render(); }
+
+  async function scan() {
+    const v = document.getElementById('camVideo');
+    if (!v || !v.videoWidth || CAM.busy) return;
+    CAM.busy = true; CAM.note = 'Sending photo to Gemini…'; panel();
+    try {
+      const out = await askGemini(snapshot(v));
+      CAM.seen = out.seen || out.name_guess || 'something';
+      CAM.matches = (out.matches || []).map(m => ({ p: state.products.find(x => x.id === m.id), c: Number(m.confidence) || 0 })).filter(m => m.p);
+      // backup: if the AI gave a name but no id matched, try the app's own search on that name
+      if (!CAM.matches.length && out.name_guess && typeof matchScore === 'function') {
+        const q = String(out.name_guess).toLowerCase();
+        CAM.matches = state.products.map(p => ({ p, s: matchScore(p, q) })).filter(x => x.s >= 0 && x.s <= 4)
+          .sort((a, b) => a.s - b.s).slice(0, 5).map(x => ({ p: x.p, c: 0 }));
+      }
+      CAM.note = CAM.matches.length ? 'Tap the correct product to add it to the bill.' : '';
+      const top = CAM.matches[0];
+      if (CAM.matches.length === 1 && top.c >= 0.85 && inStock(top.p)) { CAM.busy = false; goAdd(top.p); return; }
+    } catch (e) { CAM.note = 'Scan failed: ' + (e.message || e); }
+    CAM.busy = false; panel();
+  }
+
+  document.addEventListener('click', e => {
+    const b = e.target.closest && e.target.closest('[data-cam]');
+    if (b) {
+      const a = b.dataset.cam;
+      if (a === 'open') open();
+      else if (a === 'close') close();
+      else if (a === 'scan') scan();
+      else if (a === 'changekey') { CAM.editKey = true; panel(); }
+      else if (a === 'savekey') {
+        const k = (document.getElementById('camKey').value || '').trim();
+        const mdl = (document.getElementById('camModel').value || '').trim();
+        if (mdl) ls.set(K_MODEL, mdl);
+        if (k) ls.set(K_KEY, k);
+        if (ls.get(K_KEY)) { CAM.editKey = false; CAM.note = 'Saved. Tap Scan.'; panel(); }
+      }
+      return;
+    }
+    const pick = e.target.closest && e.target.closest('[data-cam-pick]');
+    if (pick) { const p = state.products.find(x => x.id === pick.dataset.camPick); if (p && inStock(p)) goAdd(p); }
+  });
+
+  function inject() {
+    const box = document.getElementById('billingSearch');
+    if (!box || !box.parentElement || box.parentElement.querySelector('[data-cam="open"]')) return;
+    const btn = document.createElement('button');
+    btn.className = 'btn btn-outline'; btn.setAttribute('data-cam', 'open');
+    btn.title = 'Scan product with AI camera'; btn.textContent = '📷 Scan';
+    box.parentElement.appendChild(btn);
+  }
+  new MutationObserver(inject).observe(document.getElementById('app') || document.body, { childList: true, subtree: true });
+  inject();
+})();
+
+/* StoreBill AI Camera — Claude vision reads the packet and picks the product */
+(function () {
+  const MODEL = 'claude-haiku-5-5';
+  const KEY_NAME = 'storebill:aikey';
+  const CAM = { stream: null, busy: false, note: '', seen: '', matches: [], asked: false };
+
+  const getKey = () => { try { return localStorage.getItem(KEY_NAME) || ''; } catch (e) { return ''; } };
+  const setKey = k => { try { localStorage.setItem(KEY_NAME, k); } catch (e) {} };
+
+  function snapshot(v) {
+    const r = Math.min(1, 1024 / Math.max(v.videoWidth, v.videoHeight));
+    const cv = document.createElement('canvas');
+    cv.width = Math.round(v.videoWidth * r); cv.height = Math.round(v.videoHeight * r);
+    cv.getContext('2d').drawImage(v, 0, 0, cv.width, cv.height);
+    return cv.toDataURL('image/jpeg', 0.8).split(',')[1];
+  }
+
+  async function askAI(b64) {
+    const list = state.products.map(p => p.id + ' | ' + p.name + ' | ' + (p.category || '')).join('\n');
+    const prompt =
+      'You help a shop cashier in Tamil Nadu, India. The photo shows a product (packet, bottle, box or loose item) held up to the camera. ' +
+      'Text on it may be Tamil, English or both. Identify the product, then choose the best matching entries from the shop\'s product list below. ' +
+      'Product names in the list may be Tamil, English or both, so match by meaning, brand and look (for example "Sakthi Manjal" = "சக்தி மஞ்சள்"). ' +
+      'Only choose products that are really in the list. If nothing matches, return an empty list.\n' +
+      'Reply with ONLY JSON: {"seen":"<what you see, max 12 words>","matches":[{"id":"<id from list>","confidence":<0 to 1>}]} ' +
+      'with at most 5 matches, best first.\n\nPRODUCT LIST (id | name | category):\n' + list;
+    const res = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        'x-api-key': getKey(),
+        'anthropic-version': '2023-06-01',
+        'anthropic-dangerous-direct-browser-access': 'true'
+      },
+      body: JSON.stringify({
+        model: MODEL, max_tokens: 400,
+        messages: [{ role: 'user', content: [
+          { type: 'image', source: { type: 'base64', media_type: 'image/jpeg', data: b64 } },
+          { type: 'text', text: prompt }
+        ] }]
+      })
+    });
+    if (!res.ok) {
+      const t = await res.text();
+      throw new Error(res.status === 401 ? 'The API key is not valid. Press "Change key".' : 'AI error ' + res.status + ': ' + t.slice(0, 160));
+    }
+    const data = await res.json();
+    const txt = (data.content || []).map(c => c.text || '').join('');
+    const m = txt.match(/\{[\s\S]*\}/);
+    if (!m) throw new Error('The AI reply could not be read. Try again.');
+    return JSON.parse(m[0]);
+  }
+
+  function panel() {
+    let el = document.getElementById('camOverlay');
+    if (!el) { el = document.createElement('div'); el.id = 'camOverlay'; document.body.appendChild(el); }
+    const hasKey = !!getKey();
+    const keyBox = (!hasKey || CAM.asked) ? `
+      <div class="field"><label>Anthropic API key (saved only in this browser)</label>
+        <input type="password" id="camKey" placeholder="sk-ant-..." autocomplete="off">
+        <button class="btn btn-primary btn-sm" data-cam="savekey" style="margin-top:6px;">Save key</button>
+        <div class="helptext">Get a key at console.anthropic.com → API Keys. Set a small monthly spend limit there.</div></div>` : '';
+    const results = CAM.matches.length ? CAM.matches.map(m => `
+      <button class="btn btn-outline" data-cam-pick="${esc(m.p.id)}" ${inStock(m.p) ? '' : 'disabled'}
+        style="justify-content:space-between;width:100%;margin-bottom:6px;">
+        <span>${esc(m.p.name)} <span class="helptext" style="display:inline;">${Math.round(m.c * 100)}%</span></span>
+        <strong>${inStock(m.p) ? fmtMoney(m.p.pricePerBase) + '/' + m.p.baseUnit : 'Out of stock'}</strong>
+      </button>`).join('')
+      : (CAM.seen ? '<div class="receipt-empty">No matching product in your list. Try again, or search manually.</div>' : '');
+    el.innerHTML = `
+    <div class="modal-backdrop open" style="z-index:100;">
+      <div class="modal" style="width:min(440px,94vw);">
+        <h3>📷 AI product scan</h3>
+        <video id="camVideo" autoplay playsinline muted style="width:100%;border-radius:8px;background:#000;max-height:44vh;object-fit:cover;"></video>
+        <div class="helptext" style="margin:6px 0 10px;">Show the whole packet to the camera, then tap Scan.</div>
+        ${keyBox}
+        <div style="display:flex;gap:8px;margin-bottom:10px;">
+          <button class="btn btn-primary" data-cam="scan" style="flex:1;justify-content:center;" ${(CAM.busy || !hasKey) ? 'disabled' : ''}>${CAM.busy ? 'AI is looking…' : 'Scan'}</button>
+          ${hasKey && !CAM.asked ? '<button class="btn btn-outline btn-sm" data-cam="changekey">Change key</button>' : ''}
+          <button class="btn btn-outline" data-cam="close">Close</button>
+        </div>
+        ${CAM.note ? `<div class="helptext" style="margin-bottom:8px;">${esc(CAM.note)}</div>` : ''}
+        <div>${results}</div>
+        ${CAM.seen ? `<div class="helptext" style="margin-top:8px;">AI saw: ${esc(CAM.seen)}</div>` : ''}
+      </div>
+    </div>`;
+    const v = document.getElementById('camVideo');
+    if (v && CAM.stream) { v.srcObject = CAM.stream; v.play().catch(() => {}); }
+  }
+
+  async function open() {
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+      alert('Camera not available. Open the site with https:// and allow camera permission.'); return;
+    }
+    CAM.seen = ''; CAM.matches = []; CAM.asked = false; CAM.note = 'Starting camera…';
+    try {
+      CAM.stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: { ideal: 'environment' }, width: { ideal: 1280 } }, audio: false });
+      CAM.note = '';
+    } catch (e) { CAM.stream = null; CAM.note = 'Camera blocked or not found: ' + (e.message || e); }
+    panel();
+  }
+  function close() {
+    if (CAM.stream) CAM.stream.getTracks().forEach(t => t.stop());
+    CAM.stream = null;
+    const el = document.getElementById('camOverlay'); if (el) el.remove();
+  }
+  async function scan() {
+    const v = document.getElementById('camVideo');
+    if (!v || !v.videoWidth || CAM.busy) return;
+    CAM.busy = true; CAM.note = 'Sending photo to the AI…'; panel();
+    try {
+      const out = await askAI(snapshot(v));
+      CAM.seen = out.seen || 'something';
+      CAM.matches = (out.matches || []).map(m => ({ p: state.products.find(x => x.id === m.id), c: Number(m.confidence) || 0 }))
+        .filter(m => m.p);
+      CAM.note = CAM.matches.length ? 'Tap the correct product to add it to the bill.' : '';
+      const top = CAM.matches[0];
+      if (CAM.matches.length === 1 && top.c >= 0.85 && inStock(top.p)) {     // one sure match: go straight to Add to bill
+        close(); state.activeProduct = top.p; state._cartModalOpen = true; render(); CAM.busy = false; return;
+      }
+    } catch (e) { CAM.note = 'Scan failed: ' + (e.message || e); }
+    CAM.busy = false; panel();
+  }
+
+  document.addEventListener('click', e => {
+    const b = e.target.closest && e.target.closest('[data-cam]');
+    if (b) {
+      const a = b.dataset.cam;
+      if (a === 'open') open();
+      else if (a === 'close') close();
+      else if (a === 'scan') scan();
+      else if (a === 'changekey') { CAM.asked = true; panel(); }
+      else if (a === 'savekey') {
+        const k = (document.getElementById('camKey').value || '').trim();
+        if (k) { setKey(k); CAM.asked = false; CAM.note = 'Key saved. Tap Scan.'; panel(); }
+      }
+      return;
+    }
+    const pick = e.target.closest && e.target.closest('[data-cam-pick]');
+    if (pick) {
+      const p = state.products.find(x => x.id === pick.dataset.camPick);
+      if (!p || !inStock(p)) return;
+      close(); state.activeProduct = p; state._cartModalOpen = true; render();
+    }
+  });
+
+  function inject() {
+    const box = document.getElementById('billingSearch');
+    if (!box || !box.parentElement || box.parentElement.querySelector('[data-cam="open"]')) return;
+    const btn = document.createElement('button');
+    btn.className = 'btn btn-outline'; btn.setAttribute('data-cam', 'open');
+    btn.title = 'Scan product with AI camera'; btn.textContent = '📷 Scan';
+    box.parentElement.appendChild(btn);
+  }
+  new MutationObserver(inject).observe(document.getElementById('app') || document.body, { childList: true, subtree: true });
+  inject();
+})();
+
+/* StoreBill barcode scanner — learns barcode -> product, then adds to bill */
+(function () {
+  const LS = 'storebill:barcodes';
+  const B = { stream: null, timer: null, det: null, map: {}, last: '', lastAt: 0, pending: null, note: '', busy: false, zx: null };
+  const clean = s => String(s || '').trim();
+  const fbKey = c => c.replace(/[.$#\[\]\/]/g, '_');
+  const hasCloud = () => typeof CLOUD_DB_URL !== 'undefined' && !!CLOUD_DB_URL;
+  const lsGet = () => { try { return JSON.parse(localStorage.getItem(LS)) || {}; } catch (e) { return {}; } };
+  const lsSet = m => { try { localStorage.setItem(LS, JSON.stringify(m)); } catch (e) {} };
+
+  async function loadMap() {
+    B.map = lsGet();
+    if (hasCloud()) {
+      try {
+        const d = await cloudRequest('barcodes', 'GET');
+        if (d) { const m = {}; Object.values(d).forEach(v => { if (v && v.code && v.productId) m[v.code] = v.productId; }); B.map = m; lsSet(m); }
+      } catch (e) {}
+    }
+  }
+  async function link(code, pid) {
+    B.map[code] = pid; lsSet(B.map);
+    if (hasCloud()) {
+      try { await cloudRequest('barcodes/' + fbKey(code), 'PUT', { code, productId: pid }); }
+      catch (e) { B.note = 'Saved on this device only (cloud error: ' + (e.message || e) + ')'; }
+    }
+  }
+  function beep() {
+    try {
+      const a = new (window.AudioContext || window.webkitAudioContext)(), o = a.createOscillator();
+      o.frequency.value = 1200; o.connect(a.destination); o.start(); setTimeout(() => { o.stop(); a.close(); }, 90);
+    } catch (e) {}
+  }
+  function loadZX() {
+    return new Promise((res, rej) => {
+      if (window.ZXing) return res();
+      const s = document.createElement('script');
+      s.src = 'https://cdn.jsdelivr.net/npm/@zxing/library@0.21.3/umd/index.min.js';
+      s.onload = res; s.onerror = () => rej(new Error('Could not load the barcode reader.'));
+      document.head.appendChild(s);
+    });
+  }
+
+  // ---------- panel ----------
+  function panel() {
+    let el = document.getElementById('barOverlay');
+    if (!el) { el = document.createElement('div'); el.id = 'barOverlay'; document.body.appendChild(el); }
+    const pend = B.pending ? `
+      <div class="card" style="padding:12px;margin-bottom:10px;border-color:var(--turmeric);">
+        <div style="font-weight:700;margin-bottom:6px;">New barcode: <span class="mono">${esc(B.pending)}</span></div>
+        <div class="helptext" style="margin-bottom:6px;">Which product is this? Tap it once and it will be remembered.</div>
+        <input type="text" id="barPickSearch" placeholder="Search product (Tamil or English)...">
+        <div id="barList" style="max-height:30vh;overflow:auto;margin-top:6px;"></div>
+        <button class="btn btn-outline btn-sm" data-bar="skip" style="margin-top:6px;">Cancel</button>
+      </div>` : '';
+    el.innerHTML = `
+    <div class="modal-backdrop open" style="z-index:100;">
+      <div class="modal" style="width:min(440px,94vw);">
+        <h3>▦ Scan barcode</h3>
+        <video id="barVideo" autoplay playsinline muted style="width:100%;border-radius:8px;background:#000;max-height:34vh;object-fit:cover;"></video>
+        <div class="helptext" style="margin:6px 0 8px;">Hold the barcode flat, 10–20 cm away, in good light. It reads by itself.</div>
+        ${pend}
+        ${B.note ? `<div class="helptext" style="margin-bottom:8px;font-weight:700;">${esc(B.note)}</div>` : ''}
+        <div class="qty-row" style="margin-bottom:8px;">
+          <input type="text" id="barManual" placeholder="Or type / scanner: barcode number" style="flex:1;min-width:0;">
+          <button class="btn btn-primary btn-sm" data-bar="manual">Go</button>
+        </div>
+        <div style="display:flex;gap:8px;">
+          <button class="btn btn-outline btn-sm" data-bar="torch">🔦 Light</button>
+          <button class="btn btn-outline" data-bar="close" style="flex:1;justify-content:center;">Close</button>
+        </div>
+      </div>
+    </div>`;
+    const v = document.getElementById('barVideo');
+    if (v && B.stream) { v.srcObject = B.stream; v.play().catch(() => {}); }
+    if (B.pending) fillList('');
+  }
+  function fillList(q) {
+    const box = document.getElementById('barList'); if (!box) return;
+    q = q.trim().toLowerCase();
+    let list = state.products.map(p => ({ p, s: q ? (typeof matchScore === 'function' ? matchScore(p, q) : ((p.name || '').toLowerCase().includes(q) ? 0 : -1)) : 0 }))
+      .filter(x => x.s >= 0).sort((a, b) => a.s - b.s || (a.p.name || '').localeCompare(b.p.name || '')).slice(0, 12);
+    box.innerHTML = list.length ? list.map(x => `<button class="btn btn-outline btn-sm" data-bar-link="${esc(x.p.id)}" style="width:100%;justify-content:space-between;margin-bottom:4px;">
+      <span>${esc(x.p.name)}</span><span class="helptext">${esc(x.p.category || '')}</span></button>`).join('') : '<div class="receipt-empty">No product found.</div>';
+  }
+
+  // ---------- scanning ----------
+  async function open() {
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) { alert('Camera not available. Use https:// and allow camera permission.'); return; }
+    B.pending = null; B.note = 'Starting camera…'; B.last = '';
+    await loadMap();
+    try {
+      B.stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: { ideal: 'environment' }, width: { ideal: 1920 }, height: { ideal: 1080 } }, audio: false });
+      const tr = B.stream.getVideoTracks()[0];
+      try { await tr.applyConstraints({ advanced: [{ focusMode: 'continuous' }] }); } catch (e) {}
+      B.note = '';
+    } catch (e) { B.stream = null; B.note = 'Camera blocked or not found: ' + (e.message || e); }
+    if ('BarcodeDetector' in window) {
+      try { B.det = new BarcodeDetector({ formats: ['ean_13', 'ean_8', 'upc_a', 'upc_e', 'code_128', 'code_39', 'code_93', 'itf', 'codabar', 'qr_code'] }); }
+      catch (e) { try { B.det = new BarcodeDetector(); } catch (e2) { B.det = null; } }
+    }
+    if (!B.det) { try { await loadZX(); } catch (e) { B.note = e.message; } }
+    panel();
+    clearInterval(B.timer);
+    B.timer = setInterval(tick, 300);
+  }
+  async function tick() {
+    const v = document.getElementById('barVideo');
+    if (!v || !v.videoWidth || B.pending || B.busy) return;
+    B.busy = true;
+    try {
+      let code = '';
+      if (B.det) { const r = await B.det.detect(v); if (r.length) code = r[0].rawValue; }
+      else if (window.ZXing) {
+        const cv = document.createElement('canvas'); cv.width = v.videoWidth; cv.height = v.videoHeight;
+        cv.getContext('2d').drawImage(v, 0, 0);
+        const bmp = new ZXing.BinaryBitmap(new ZXing.HybridBinarizer(new ZXing.HTMLCanvasElementLuminanceSource(cv)));
+        const hints = new Map(); hints.set(ZXing.DecodeHintType.TRY_HARDER, true);
+        try { code = new ZXing.MultiFormatReader().decode(bmp, hints).getText(); } catch (e) {}
+      }
+      if (code) onCode(clean(code));
+    } catch (e) {}
+    B.busy = false;
+  }
+  function onCode(code) {
+    const now = Date.now();
+    if (code === B.last && now - B.lastAt < 2500) return;
+    B.last = code; B.lastAt = now; beep(); handle(code);
+  }
+  function handle(code) {
+    const pid = B.map[code], p = pid && state.products.find(x => x.id === pid);
+    if (p) {
+      if (!inStock(p)) { B.note = p.name + ' is out of stock.'; panel(); return; }
+      goAdd(p); return;
+    }
+    B.pending = code; B.note = ''; panel();
+  }
+  function goAdd(p) { close(); state.activeProduct = p; state._cartModalOpen = true; render(); }
+  function close() {
+    clearInterval(B.timer); B.timer = null;
+    if (B.stream) B.stream.getTracks().forEach(t => t.stop());
+    B.stream = null; B.pending = null;
+    const el = document.getElementById('barOverlay'); if (el) el.remove();
+  }
+
+  document.addEventListener('click', async e => {
+    const b = e.target.closest && e.target.closest('[data-bar]');
+    if (b) {
+      const a = b.dataset.bar;
+      if (a === 'open') open();
+      else if (a === 'close') close();
+      else if (a === 'skip') { B.pending = null; B.last = ''; panel(); }
+      else if (a === 'manual') { const c = clean(document.getElementById('barManual').value); if (c) { B.last = ''; handle(c); } }
+      else if (a === 'torch' && B.stream) {
+        const tr = B.stream.getVideoTracks()[0]; B.torch = !B.torch;
+        try { await tr.applyConstraints({ advanced: [{ torch: B.torch }] }); } catch (err) { B.note = 'Light not supported on this camera.'; panel(); }
+      }
+      return;
+    }
+    const lk = e.target.closest && e.target.closest('[data-bar-link]');
+    if (lk && B.pending) {
+      const p = state.products.find(x => x.id === lk.dataset.barLink); if (!p) return;
+      const code = B.pending; await link(code, p.id);
+      if (!inStock(p)) { B.pending = null; B.note = 'Linked to ' + p.name + ', but it is out of stock.'; panel(); return; }
+      goAdd(p);
+    }
+  });
+  document.addEventListener('input', e => { if (e.target && e.target.id === 'barPickSearch') fillList(e.target.value); });
+  document.addEventListener('keydown', e => {      // USB barcode scanners type the number and press Enter
+    if (e.key === 'Enter' && e.target && e.target.id === 'barManual') { const c = clean(e.target.value); if (c) { B.last = ''; handle(c); } }
+  });
+
+  function inject() {
+    const box = document.getElementById('billingSearch');
+    if (!box || !box.parentElement || box.parentElement.querySelector('[data-bar="open"]')) return;
+    const btn = document.createElement('button');
+    btn.className = 'btn btn-outline'; btn.setAttribute('data-bar', 'open'); btn.textContent = '▦ Barcode';
+    box.parentElement.appendChild(btn);
+  }
+  new MutationObserver(inject).observe(document.getElementById('app') || document.body, { childList: true, subtree: true });
+  inject();
+})();
+
+/* StoreBill — product "super number" (short code) */
+(function () {
+  const same = (p, code) => String(p.shortCode || '').trim().toLowerCase() === String(code).trim().toLowerCase();
+  const usedBy = (code, exceptId) => state.products.find(p => p.id !== exceptId && p.shortCode && same(p, code));
+  function nextFree() {
+    let m = 0;
+    state.products.forEach(p => { const s = String(p.shortCode || '').trim(), n = parseInt(s, 10); if (String(n) === s && n > m) m = n; });
+    return m + 1;
+  }
+
+  // 1) save the number together with the product
+  const _save = saveRecord;
+  saveRecord = async function (name, rec) {
+    if (name === 'products') {
+      const inp = document.getElementById('pf-short');
+      if (inp) {
+        const v = inp.value.trim();
+        const clash = v && usedBy(v, rec.id);
+        if (clash) alert('Number ' + v + ' is already used by "' + clash.name + '". This product was saved without changing its number.');
+        else rec.shortCode = v;
+      }
+    }
+    return _save(name, rec);
+  };
+
+  // 2) add the "Short number" box to the Add / Edit product form
+  function injectField() {
+    const f = document.getElementById('productForm');
+    if (!f || document.getElementById('pf-short')) return;
+    const ed = state._editingProduct;
+    const val = ed ? (ed.shortCode || '') : String(nextFree());
+    const div = document.createElement('div'); div.className = 'field';
+    div.innerHTML = '<label>Short number (optional)</label>' +
+      '<input type="text" id="pf-short" inputmode="numeric" placeholder="e.g. 11" value="' + esc(val) + '">' +
+      '<div class="helptext">Type this number at the billing counter to add the product quickly.' + (ed ? '' : ' The next free number is suggested; change it if you like.') + '</div>';
+    document.getElementById('pf-name').closest('.field').insertAdjacentElement('afterend', div);
+  }
+
+  // 3) show the number on product rows and billing tiles
+  function badges() {
+    document.querySelectorAll('[data-edit-product]').forEach(b => {
+      const tr = b.closest('tr'); if (!tr || tr.querySelector('.sc-badge')) return;
+      const p = state.products.find(x => x.id === b.dataset.editProduct); const st = tr.querySelector('td strong');
+      if (p && p.shortCode && st) st.insertAdjacentHTML('afterend', ' <span class="badge in sc-badge">#' + esc(p.shortCode) + '</span>');
+    });
+    document.querySelectorAll('[data-tile]').forEach(t => {
+      if (t.querySelector('.sc-badge')) return;
+      const p = state.products.find(x => x.id === t.dataset.tile); const nm = t.querySelector('.name');
+      if (p && p.shortCode && nm) nm.insertAdjacentHTML('beforeend', ' <span class="badge in sc-badge" style="position:static;">#' + esc(p.shortCode) + '</span>');
+    });
+  }
+
+  // 4) number box at the billing counter
+  function injectQuick() {
+    const box = document.getElementById('billingSearch');
+    if (!box || document.getElementById('quickNo')) return;
+    const i = document.createElement('input');
+    i.id = 'quickNo'; i.type = 'text'; i.setAttribute('inputmode', 'numeric'); i.placeholder = '# No.';
+    i.title = 'Type the product number and press Enter';
+    i.style.cssText = 'width:84px;flex:none;text-align:center;font-weight:700;';
+    box.parentElement.insertBefore(i, box.nextSibling);
+  }
+  const focusQuick = () => { if (window.matchMedia && matchMedia('(pointer:fine)').matches) { const q = document.getElementById('quickNo'); if (q) q.focus(); } };
+
+  document.addEventListener('keydown', e => {
+    if (e.key !== 'Enter' || !e.target || e.target.id !== 'quickNo') return;
+    e.preventDefault();
+    const code = e.target.value.trim(); if (!code) return;
+    const p = state.products.find(x => x.shortCode && same(x, code));
+    if (!p) { state.error = 'No product has the number ' + code + '.'; render(); focusQuick(); return; }
+    if (!inStock(p)) { state.error = p.name + ' is out of stock.'; render(); focusQuick(); return; }
+    state.error = null; state.activeProduct = p; state._cartModalOpen = true; render();
+  });
+  // on a PC, go back to the number box after each add so you can keep typing numbers
+  document.addEventListener('click', e => {
+    if (e.target.closest && e.target.closest('#confirmAddToCart, [data-pack], #cancelCartModal')) setTimeout(focusQuick, 60);
+  });
+
+  function run() { injectField(); badges(); injectQuick(); }
+  new MutationObserver(run).observe(document.getElementById('app') || document.body, { childList: true, subtree: true });
+  run();
+})();
+
+/* StoreBill — 3 changes:
+   1) app opens on the Billing Counter
+   2) quantity arrows step 1, 2, 3
+   3) the same product added again increases the existing bill line */
+(function () {
+  // 1) open on the Billing Counter
+  state.view = 'billing';
+
+  // 2) quantity arrows go 1, 2, 3 (typing 0.5 or 0.25 still works)
+  function fixSteps() {
+    document.querySelectorAll('#cm-qty, #el-qty').forEach(i => {
+      if (i.step !== '1') { i.step = '1'; i.min = '0'; }
+    });
+  }
+  new MutationObserver(fixSteps).observe(document.getElementById('app'), { childList: true, subtree: true });
+
+  // 3) same product again -> one line, quantity increased
+  function mergeLines(list) {
+    if (!Array.isArray(list)) return;
+    const seen = {};
+    for (let i = 0; i < list.length; i++) {
+      const it = list[i];
+      const isPack = !!it.packId && it.packPrice != null;
+      const key = it.productId + '|' + (isPack ? 'pack:' + it.packId : 'custom');
+      const first = seen[key];
+      if (!first) { seen[key] = it; continue; }
+      if (isPack) {                                  // same pack size: add the number of packs
+        first.packCount += it.packCount;
+        first.quantity = Math.round(first.packQty * first.packCount * 1000) / 1000;
+      } else {                                       // custom quantity: add (kg and g are converted)
+        const add = it.quantity * (UNIT_TO_BASE[it.unit] / UNIT_TO_BASE[first.unit]);
+        first.quantity = Math.round((first.quantity + add) * 1000) / 1000;
+      }
+      list.splice(i, 1); i--;
+    }
+  }
+  const _render = render;
+  render = function () {
+    if (state._editLineIdx == null) { mergeLines(state.cart); mergeLines(state._custCart); }
+    return _render.apply(this, arguments);
+  };
+  render();
+})();
+
+
 </script>
 </body>
 </html>
